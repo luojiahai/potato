@@ -1,3 +1,5 @@
 node_modules/
 .claude/worktrees/
+.claude/skills/
+skills-lock.json
 pnpm-lock.yaml
