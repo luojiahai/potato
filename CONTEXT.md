@@ -5,7 +5,7 @@ A TUI for saving, fuzzy-finding, and handing off long terminal commands. Potato 
 ## Language
 
 **Command**:
-A saved, named entry in the Library: a template string plus an optional description. Identified everywhere by its name.
+A saved entry in the Library: a template string plus an optional description, under a unique name. Identified internally by a stable id (a UUID) so a rename keeps its State and file slot; the name is what you see, search by, and share — no two Commands may share one.
 _Avoid_: snippet, alias, entry
 
 **Library**:
@@ -21,13 +21,13 @@ Delivering the rendered command to the user: Enter pre-fills the parent shell's 
 _Avoid_: execute, run (potato-side)
 
 **State**:
-The disposable per-Command cache in `~/.potato/state.json` (last-used time, last argument values). Safe to delete; never shared or imported.
+The disposable per-Command cache in `~/.potato/state.json` (last-used time, last argument values), keyed by Command id so it survives renames. Safe to delete; never shared or imported.
 _Avoid_: history, settings
 
 **Import**:
-Merging another Library file into your own via `potato import`. Ours-wins: it only adds Commands whose names you don't already have, unless overwriting is explicitly requested.
+Merging another Library file into your own via `potato import`. `--merge` (the default) adds every incoming Command as a new Command (fresh id), renaming on a name Collision so nothing is lost; `--override` replaces your whole Library with the imported file.
 _Avoid_: sync, load, restore
 
 **Collision**:
-An incoming Command during Import whose name already exists in your Library. Differing Collisions are skipped and reported; identical ones are no-ops.
+An incoming Command during `--merge` whose name already exists in your Library. Both are kept — the incoming one is renamed `name (N)`.
 _Avoid_: conflict, duplicate

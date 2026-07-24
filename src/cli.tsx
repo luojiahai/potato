@@ -9,10 +9,11 @@ import { App, type AppDeps } from './tui/App';
 import { bunSafeStdin } from './tui/stdin';
 import { copyToClipboard } from './clipboard';
 import { mergeLibraries } from './import';
-import { loadLibrary, parseLibrary, saveLibrary } from './library';
+import { parseLibrary, saveLibrary } from './library';
+import { loadLibraryMigrating } from './migrate';
 import { commandsPath, binPath, potatoDir, statePath } from './paths';
 import { initScript } from './shell';
-import { loadState, saveState } from './state';
+import { saveState } from './state';
 import { runUninstall } from './uninstall';
 import { runUpdate } from './update';
 import { VERSION } from './version';
@@ -22,8 +23,9 @@ const USAGE = `potato ${VERSION} — save, find, and hand off long terminal comm
 usage:
   potato                       open the TUI (Enter = run, Ctrl-Y = copy)
   potato --out <file>          TUI; write the selection to <file> (shell glue)
-  potato import <file|-> [--theirs]
-                               merge another library in (ours wins; --theirs overwrites)
+  potato import <file|-> [--merge | --override]
+                               merge another library in (--merge, the default,
+                               keeps both on a name clash; --override replaces yours)
   potato update                update to the latest release
   potato uninstall [--purge]   remove potato (keep data; --purge wipes it)
   potato init <zsh|bash|sh>    print shell integration (used by the installer)
@@ -37,13 +39,16 @@ function die(message: string): never {
 
 async function runTui(outFile: string | null): Promise<void> {
   if (!process.stdin.isTTY) die('the potato TUI needs a terminal');
-  const library = loadLibrary(commandsPath());
-  const state = loadState(statePath());
+  // Migration runs synchronously here, before the alt-screen switch and the
+  // first render, so the list is populated from the first frame; a footer
+  // toast (via deps.migrated) signals the upgrade in-TUI.
+  const { library, state, migrated } = loadLibraryMigrating(commandsPath(), statePath());
   let handoff: string | null = null;
 
   const deps: AppDeps = {
     library,
     state,
+    migrated,
     saveLibrary: (lib) => saveLibrary(commandsPath(), lib),
     saveState: (s) => saveState(statePath(), s),
     copy: (text) => copyToClipboard(text),
@@ -72,9 +77,10 @@ async function runTui(outFile: string | null): Promise<void> {
 }
 
 function runImport(args: string[]): void {
-  const theirsFlag = args.includes('--theirs');
+  const override = args.includes('--override');
+  if (override && args.includes('--merge')) die('choose one of --merge or --override, not both');
   const file = args.find((a) => a === '-' || !a.startsWith('--'));
-  if (!file) die('usage: potato import <file|-> [--theirs]');
+  if (!file) die('usage: potato import <file|-> [--merge | --override]');
 
   const source = file === '-' ? 'stdin' : file;
   let text: string;
@@ -84,19 +90,30 @@ function runImport(args: string[]): void {
     die(`cannot read ${source}: ${(e as Error).message}`);
   }
 
+  // Version-strict: a still-v1 incoming file fail-louds ("unsupported version
+  // 1"); senders must be on v2 (their own library auto-migrates and they share
+  // that). Only our own library upgrades on load, below.
   const theirs = parseLibrary(text, source);
-  const ours = loadLibrary(commandsPath());
-  const { merged, added, skipped, overwritten } = mergeLibraries(ours, theirs, { theirs: theirsFlag });
+
+  if (override) {
+    // Replace wholesale: the imported file becomes the Library as-is (its ids
+    // kept). Any prior state.json entries are harmless orphans.
+    saveLibrary(commandsPath(), theirs);
+    const n = theirs.commands.length;
+    console.log(`replaced your Library with ${source} (${n} command${n === 1 ? '' : 's'})`);
+    return;
+  }
+
+  const { library: ours, migrated } = loadLibraryMigrating(commandsPath(), statePath());
+  if (migrated) console.error('potato: upgraded your library to v2');
+
+  const { merged, added, renamed } = mergeLibraries(ours, theirs);
   saveLibrary(commandsPath(), merged);
 
   if (added.length) console.log(`added: ${added.join(', ')}`);
-  if (overwritten.length) console.log(`overwritten: ${overwritten.join(', ')}`);
-  if (skipped.length) {
-    console.log(`skipped (already yours, differs): ${skipped.join(', ')}`);
-    console.log('re-run with --theirs to overwrite');
-  }
-  if (!added.length && !overwritten.length && !skipped.length)
-    console.log('nothing to import — your Library already has all of these');
+  if (renamed.length)
+    console.log(`kept both: ${renamed.map(([from, to]) => `${from} → ${to}`).join(', ')}`);
+  if (!added.length && !renamed.length) console.log('nothing to import');
 }
 
 function runInit(args: string[]): void {

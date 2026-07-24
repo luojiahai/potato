@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadState, recordUse, saveState } from '../src/state';
 
-// Spec §1.2: state.json is a disposable per-Command cache — unreadable means
-// silently reset to {}. lastUsedAt drives MRU; args are last Placeholder values.
+// state.json is a disposable per-Command cache, keyed by Command id —
+// unreadable means silently reset to {}. lastUsedAt drives MRU; args are last
+// Placeholder values.
 
 const dir = () => mkdtempSync(join(tmpdir(), 'potato-state-'));
 
@@ -28,14 +29,14 @@ describe('loadState', () => {
 });
 
 describe('recordUse + save/load round trip', () => {
-  test('stores lastUsedAt and merges arg values per command', () => {
+  test('stores lastUsedAt and merges arg values per command id', () => {
     const file = join(dir(), 'state.json');
     let state = loadState(file);
-    state = recordUse(state, 'deploy prod', { host: 'prod-2' }, new Date('2026-07-24T09:12:00Z'));
+    state = recordUse(state, 'cmd-1', { host: 'prod-2' }, new Date('2026-07-24T09:12:00Z'));
     saveState(file, state);
     const loaded = loadState(file);
-    expect(loaded['deploy prod']!.lastUsedAt).toBe('2026-07-24T09:12:00.000Z');
-    expect(loaded['deploy prod']!.args).toEqual({ host: 'prod-2' });
+    expect(loaded['cmd-1']!.lastUsedAt).toBe('2026-07-24T09:12:00.000Z');
+    expect(loaded['cmd-1']!.args).toEqual({ host: 'prod-2' });
   });
 
   test('a later use updates the timestamp and merges new args over old', () => {

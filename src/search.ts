@@ -42,22 +42,16 @@ export function nameMatchIndices(query: string, name: string): Set<number> | nul
   return indices;
 }
 
-export function searchCommands(
-  commands: Record<string, CommandEntry>,
-  state: State,
-  query: string,
-): string[] {
-  const names = Object.keys(commands);
+export function searchCommands(commands: CommandEntry[], state: State, query: string): CommandEntry[] {
   if (query.trim() === '') {
-    const used = names.filter((n) => state[n]?.lastUsedAt);
-    const rest = names.filter((n) => !state[n]?.lastUsedAt);
-    used.sort((a, b) => Date.parse(state[b]!.lastUsedAt) - Date.parse(state[a]!.lastUsedAt));
+    const used = commands.filter((c) => state[c.id]?.lastUsedAt);
+    const rest = commands.filter((c) => !state[c.id]?.lastUsedAt);
+    used.sort((a, b) => Date.parse(state[b.id]!.lastUsedAt) - Date.parse(state[a.id]!.lastUsedAt));
     return [...used, ...rest];
   }
-  const scored: Array<{ name: string; score: number }> = [];
-  for (const name of names) {
-    const entry = commands[name]!;
-    const byName = subsequenceScore(query, name);
+  const scored: Array<{ entry: CommandEntry; score: number }> = [];
+  for (const entry of commands) {
+    const byName = subsequenceScore(query, entry.name);
     const byDesc = entry.description ? subsequenceScore(query, entry.description) : null;
     const byBody = subsequenceScore(query, entry.command);
     const best = Math.max(
@@ -65,7 +59,7 @@ export function searchCommands(
       byDesc === null ? -Infinity : byDesc * 10,
       byBody === null ? -Infinity : byBody,
     );
-    if (best !== -Infinity) scored.push({ name, score: best });
+    if (best !== -Infinity) scored.push({ entry, score: best });
   }
-  return scored.sort((a, b) => b.score - a.score).map((s) => s.name);
+  return scored.sort((a, b) => b.score - a.score).map((s) => s.entry);
 }
