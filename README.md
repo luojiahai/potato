@@ -1,4 +1,4 @@
-# 🥔 potato
+# 🥔 Potato
 
 A TUI for saving, fuzzy-finding, and handing off long terminal commands. Potato never executes anything — it renders a command and hands it to your shell prompt (Enter) or your clipboard (Ctrl-Y).
 
@@ -56,5 +56,3 @@ potato   # the wrapper function, exactly as installed users get it
 ```
 
 Clean up with `unset -f potato` and `unset POTATO_INSTALL`.
-
-The spec this implements — and the decision trail behind it — lives in [docs/spec/potato-v1.md](docs/spec/potato-v1.md).
