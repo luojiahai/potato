@@ -24,6 +24,24 @@ function subsequenceScore(query: string, text: string): number | null {
   return score - t.length / 100;
 }
 
+// Greedy subsequence match positions of query within name — the same walk the
+// scorer takes — for match highlighting in the TUI list. null = no name match
+// (the row may still have matched via description/command) or empty query.
+export function nameMatchIndices(query: string, name: string): Set<number> | null {
+  if (query.trim() === '') return null;
+  const q = query.toLowerCase();
+  const t = name.toLowerCase();
+  const indices = new Set<number>();
+  let ti = 0;
+  for (let qi = 0; qi < q.length; qi++) {
+    const found = t.indexOf(q[qi]!, ti);
+    if (found === -1) return null;
+    indices.add(found);
+    ti = found + 1;
+  }
+  return indices;
+}
+
 export function searchCommands(
   commands: Record<string, CommandEntry>,
   state: State,

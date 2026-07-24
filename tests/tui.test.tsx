@@ -49,6 +49,32 @@ describe('list screen', () => {
     expect(frame).toContain('prod-1');
   });
 
+  test('shows the ascii wordmark banner', async () => {
+    const { deps } = makeDeps();
+    const { lastFrame } = render(<App deps={deps} onHandoff={() => {}} />);
+    await tick();
+    // the top row of the ANSI-shadow 'T' is distinctive
+    expect(lastFrame()!).toContain('████████╗');
+  });
+
+  test('commands with Placeholders carry an arg-count badge', async () => {
+    const { deps } = makeDeps();
+    const { lastFrame } = render(<App deps={deps} onHandoff={() => {}} />);
+    await tick();
+    // 'deploy prod' has one placeholder, 'list ports' has none
+    expect(lastFrame()!).toContain('deploy prod ⌁1');
+    expect(lastFrame()!).not.toContain('list ports ⌁');
+  });
+
+  test('detail pane shows a relative last-used time from State', async () => {
+    const { deps } = makeDeps({
+      state: { 'deploy prod': { lastUsedAt: '2026-07-24T08:00:00Z' } },
+    });
+    const { lastFrame } = render(<App deps={deps} onHandoff={() => {}} />);
+    await tick();
+    expect(lastFrame()!).toContain('used 2h ago');
+  });
+
   test('typing filters the list', async () => {
     const { deps } = makeDeps();
     const { lastFrame, stdin } = render(<App deps={deps} onHandoff={() => {}} />);
@@ -145,6 +171,32 @@ describe('CRUD', () => {
     await tick();
     const lib = saved.library.at(-1)!;
     expect(lib.commands['pwd now']).toEqual({ command: 'pwd' });
+  });
+
+  test('edit screen shows a live template preview with parsed args', async () => {
+    const { deps } = makeDeps();
+    const { lastFrame, stdin } = render(<App deps={deps} onHandoff={() => {}} />);
+    await tick();
+    stdin.write(KEYS.ctrlE); // edit 'deploy prod'
+    await tick();
+    const frame = lastFrame()!;
+    expect(frame).toContain('template');
+    expect(frame).toContain("$ ssh {{host=prod-1}} 'deploy.sh'");
+    expect(frame).toContain('host = prod-1');
+  });
+
+  test('add screen warns live when the name is already taken', async () => {
+    const { deps, saved } = makeDeps();
+    const { lastFrame, stdin } = render(<App deps={deps} onHandoff={() => {}} />);
+    await tick();
+    stdin.write(KEYS.ctrlA);
+    await tick();
+    stdin.write('deploy prod'); // name field — collides
+    await tick();
+    expect(lastFrame()!).toContain("⚠ 'deploy prod' already exists");
+    stdin.write(KEYS.enter); // must not save
+    await tick();
+    expect(saved.library).toEqual([]);
   });
 
   test('Ctrl-D asks for confirmation and y deletes', async () => {

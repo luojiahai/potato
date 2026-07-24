@@ -31,6 +31,20 @@ export function renderCommand(template: string, values: Record<string, string>):
   return template.replace(PLACEHOLDER_RE, (_, name: string) => resolved[name]!);
 }
 
+// Split into literal/placeholder segments with the raw {{...}} tokens kept,
+// so the edit screen can highlight the Placeholder slots themselves.
+export function templateSegments(template: string): Array<{ text: string; placeholder: boolean }> {
+  const out: Array<{ text: string; placeholder: boolean }> = [];
+  let last = 0;
+  for (const m of template.matchAll(PLACEHOLDER_RE)) {
+    if (m.index > last) out.push({ text: template.slice(last, m.index), placeholder: false });
+    out.push({ text: m[0], placeholder: true });
+    last = m.index + m[0].length;
+  }
+  if (last < template.length) out.push({ text: template.slice(last), placeholder: false });
+  return out;
+}
+
 // Split into literal/substituted segments so the live preview can highlight
 // the substituted values (spec §3.2).
 export function renderSegments(

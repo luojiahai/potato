@@ -1,13 +1,15 @@
 // The potato TUI (spec §3): split-pane list with fuzzy search, single-form
 // arg screen with live preview, in-app CRUD. Layout and flow follow the
-// prototype accepted in the wayfinder effort (variant C).
+// prototype accepted in the wayfinder effort (variant C); visual chrome is
+// the framed-panel redesign: every screen is built from titled round-border
+// panels, with match highlighting, arg-count badges, and last-used times.
 
 import React, { useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import type { CommandEntry, Library } from '../library';
 import { recordUse, type State } from '../state';
-import { searchCommands } from '../search';
-import { parsePlaceholders, renderCommand, renderSegments } from '../placeholders';
+import { nameMatchIndices, searchCommands } from '../search';
+import { parsePlaceholders, renderCommand, renderSegments, templateSegments } from '../placeholders';
 
 export interface AppDeps {
   library: Library;
@@ -26,9 +28,46 @@ type Screen =
 
 // ---------- shared chrome ----------
 
+// Brand golds from the banner gradient: the muted bottom row for frames, the
+// brighter middle row for controls (footer keys, selection pointer) — chrome
+// stays warm, cyan stays reserved for command content.
+const FRAME_COLOR = '#d78700';
+const ACCENT_COLOR = '#ffaf5f';
+
+// Round-border panel with the title overlaid on the top border
+// (marginTop -1 draws the title over the border row).
+function Panel(props: {
+  title?: string;
+  titleColor?: string;
+  borderColor?: string;
+  width?: number;
+  flexGrow?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <Box
+      borderStyle="round"
+      borderColor={props.borderColor ?? FRAME_COLOR}
+      flexDirection="column"
+      paddingX={1}
+      width={props.width}
+      flexGrow={props.flexGrow}
+    >
+      {props.title !== undefined && (
+        <Box marginTop={-1}>
+          <Text bold color={props.titleColor} wrap="truncate">
+            {' '}{props.title}{' '}
+          </Text>
+        </Box>
+      )}
+      {props.children}
+    </Box>
+  );
+}
+
 function Footer({ keys, flash }: { keys: Array<[string, string]>; flash: string | null }) {
   return (
-    <Box marginTop={1}>
+    <Box marginTop={1} paddingX={1}>
       {flash ? (
         <Text backgroundColor="yellow" color="black">
           {' '}{flash}{' '}
@@ -37,7 +76,7 @@ function Footer({ keys, flash }: { keys: Array<[string, string]>; flash: string 
         keys.map(([k, label], i) => (
           <Text key={k}>
             {i > 0 && <Text dimColor> · </Text>}
-            <Text bold color="magenta">{k}</Text>
+            <Text bold color={ACCENT_COLOR}>{k}</Text>
             <Text dimColor> {label}</Text>
           </Text>
         ))
@@ -61,6 +100,41 @@ function Field({ label, value, focused, hint }: { label: string; value: string; 
       </Text>
     </Box>
   );
+}
+
+// ANSI Shadow wordmark (hermes-agent banner style), assembled per letter so
+// the columns stay aligned. Rows are colored with a top-to-bottom gradient.
+const GLYPHS: Record<string, string[]> = {
+  p: ['██████╗ ', '██╔══██╗', '██████╔╝', '██╔═══╝ ', '██║     ', '╚═╝     '],
+  o: [' ██████╗ ', '██╔═══██╗', '██║   ██║', '██║   ██║', '╚██████╔╝', ' ╚═════╝ '],
+  t: ['████████╗', '╚══██╔══╝', '   ██║   ', '   ██║   ', '   ██║   ', '   ╚═╝   '],
+  a: [' █████╗ ', '██╔══██╗', '███████║', '██╔══██║', '██║  ██║', '╚═╝  ╚═╝'],
+};
+const BANNER = GLYPHS['p']!.map((_, row) =>
+  ['p', 'o', 't', 'a', 't', 'o'].map((c) => GLYPHS[c]![row]).join(''),
+);
+export const BANNER_WIDTH = Math.max(...BANNER.map((l) => l.length));
+const BANNER_GRADIENT = ['#ffd75f', '#ffd75f', '#ffaf5f', '#ffaf5f', '#d78700', '#d78700'];
+
+function Banner() {
+  return (
+    <Box flexDirection="column" paddingX={1}>
+      {BANNER.map((line, i) => (
+        <Text key={i} color={BANNER_GRADIENT[i]}>{line}</Text>
+      ))}
+    </Box>
+  );
+}
+
+function timeAgo(iso: string, now: Date): string | null {
+  const ms = now.getTime() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 type InkKey = Parameters<Parameters<typeof useInput>[0]>[1];
@@ -118,18 +192,22 @@ export function App({ deps, onHandoff }: { deps: AppDeps; onHandoff: (command: s
   };
 
   const rows = stdout?.rows ?? 24;
+  const columns = stdout?.columns ?? 80;
+  // hide the banner on short or narrow terminals to keep the screens usable
+  // (app paddingX 1 + banner paddingX 1 on both sides = 4 extra columns)
+  const showBanner = rows >= 19 && columns >= BANNER_WIDTH + 4;
 
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <Box>
-        <Text bold color="yellow">🥔 potato</Text>
-      </Box>
+    <Box flexDirection="column" paddingX={1} height={rows}>
+      {showBanner && <Banner />}
       {screen.kind === 'list' && (
         <ListScreen
           library={library}
           state={state}
           rows={rows}
+          banner={showBanner}
           flash={flash}
+          now={deps.now}
           onRun={(name) => {
             if (parsePlaceholders(library.commands[name]!.command).length > 0)
               setScreen({ kind: 'args', name });
@@ -205,7 +283,9 @@ function ListScreen(props: {
   library: Library;
   state: State;
   rows: number;
+  banner: boolean;
   flash: string | null;
+  now: () => Date;
   onRun: (name: string) => void;
   onCopy: (name: string) => void;
   onAdd: () => void;
@@ -240,62 +320,84 @@ function ListScreen(props: {
     }
   });
 
-  const chrome = 6; // header + search + footer + padding
+  // search panel (3) + list panel borders (2) + footer (2) + banner
+  const chrome = 7 + (props.banner ? BANNER.length : 0);
   const visible = Math.max(2, props.rows - chrome);
   const start = Math.max(0, Math.min(selIdx - visible + 1, results.length - visible));
   const window = results.slice(start, start + visible);
   const selectedEntry = selected ? props.library.commands[selected] : undefined;
+  const lastUsedAt = selected ? props.state[selected]?.lastUsedAt : undefined;
+  const used = lastUsedAt ? timeAgo(lastUsedAt, props.now()) : null;
 
   return (
-    <Box flexDirection="column">
-      <Box>
-        <Text bold color="cyan">/ </Text>
-        <Text>
-          {query}
+    <Box flexDirection="column" flexGrow={1}>
+      <Panel {...(props.banner ? {} : { title: 'potato', titleColor: 'yellow' })}>
+        <Box>
+          <Text bold color="cyan">/ </Text>
+          <Text>{query}</Text>
           <Text color="cyan">▌</Text>
-        </Text>
-        <Text dimColor>
-          {'  '}{results.length}/{total}
-          {query === '' && '  (recently used first)'}
-        </Text>
-      </Box>
-      <Box marginTop={1}>
-        <Box flexDirection="column" width={26} marginRight={1}>
-          {results.length === 0 && <Text dimColor>  no matches</Text>}
+          <Box flexGrow={1} />
+          <Text dimColor>
+            {query === '' && '(recently used first)  '}
+            {results.length}/{total}
+          </Text>
+        </Box>
+      </Panel>
+      <Box flexGrow={1}>
+        <Panel title="commands" width={30}>
+          {results.length === 0 && <Text dimColor>no matches</Text>}
           {window.map((name, i) => {
             const isSel = start + i === selIdx;
+            const matches = nameMatchIndices(query, name);
+            const argCount = parsePlaceholders(props.library.commands[name]!.command).length;
             return (
               <Box key={name}>
-                <Text color="magenta">{isSel ? '❯ ' : '  '}</Text>
-                <Text bold inverse={isSel} wrap="truncate">{name}</Text>
+                <Text color={ACCENT_COLOR}>{isSel ? '❯ ' : '  '}</Text>
+                <Text wrap="truncate">
+                  <Text bold inverse={isSel}>
+                    {matches
+                      ? name.split('').map((ch, ci) => (
+                          <Text key={ci} color={matches.has(ci) ? 'yellow' : undefined}>{ch}</Text>
+                        ))
+                      : name}
+                  </Text>
+                  {argCount > 0 && <Text dimColor color="cyan"> ⌁{argCount}</Text>}
+                </Text>
               </Box>
             );
           })}
-        </Box>
-        <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} flexGrow={1}>
-          {selected && selectedEntry ? (
-            <>
-              <Text bold>{selected}</Text>
-              {selectedEntry.description && <Text dimColor>{selectedEntry.description}</Text>}
-              <Box marginTop={1}>
-                <Text color="cyan" wrap="wrap">{selectedEntry.command}</Text>
+        </Panel>
+        {selected && selectedEntry ? (
+          <Panel title={selected} flexGrow={1}>
+            {selectedEntry.description && <Text dimColor>{selectedEntry.description}</Text>}
+            <Box marginTop={selectedEntry.description ? 1 : 0}>
+              <Text color="cyan" wrap="wrap">
+                <Text dimColor>$ </Text>
+                {selectedEntry.command}
+              </Text>
+            </Box>
+            {parsePlaceholders(selectedEntry.command).length > 0 && (
+              <Box marginTop={1} flexDirection="column">
+                <Text dimColor>args:</Text>
+                {parsePlaceholders(selectedEntry.command).map((p) => (
+                  <Text key={p.name}>
+                    {'  '}<Text color="yellow">{p.name}</Text>
+                    {p.default !== undefined && <Text dimColor> = {p.default}</Text>}
+                  </Text>
+                ))}
               </Box>
-              {parsePlaceholders(selectedEntry.command).length > 0 && (
-                <Box marginTop={1} flexDirection="column">
-                  <Text dimColor>args:</Text>
-                  {parsePlaceholders(selectedEntry.command).map((p) => (
-                    <Text key={p.name}>
-                      {'  '}<Text color="yellow">{p.name}</Text>
-                      {p.default !== undefined && <Text dimColor> = {p.default}</Text>}
-                    </Text>
-                  ))}
-                </Box>
-              )}
-            </>
-          ) : (
+            )}
+            {used && (
+              <Box marginTop={1}>
+                <Text dimColor>used {used}</Text>
+              </Box>
+            )}
+          </Panel>
+        ) : (
+          <Panel flexGrow={1}>
             <Text dimColor>nothing selected</Text>
-          )}
-        </Box>
+          </Panel>
+        )}
       </Box>
       <Footer
         flash={props.flash}
@@ -342,28 +444,29 @@ function ArgsScreen(props: {
   });
 
   return (
-    <Box flexDirection="column" marginTop={1}>
-      <Text>
-        <Text bold>{props.name}</Text>
-        <Text dimColor>  needs {placeholders.length} arg{placeholders.length > 1 ? 's' : ''}</Text>
-      </Text>
-      <Box flexDirection="column" marginTop={1}>
-        {placeholders.map((p, i) => {
-          const fromLast = props.lastArgs?.[p.name] !== undefined;
-          return (
-            <Field
-              key={p.name}
-              label={p.name}
-              value={values[p.name]!}
-              focused={i === focus}
-              hint={fromLast ? '(last used)' : p.default !== undefined ? `(default: ${p.default})` : undefined}
-            />
-          );
-        })}
-      </Box>
-      <Box flexDirection="column" marginTop={1} borderStyle="round" borderDimColor paddingX={1}>
-        <Text dimColor>will run:</Text>
+    <Box flexDirection="column" flexGrow={1}>
+      <Panel title={props.name}>
+        <Text dimColor>
+          needs {placeholders.length} arg{placeholders.length > 1 ? 's' : ''}
+        </Text>
+        <Box flexDirection="column" marginTop={1}>
+          {placeholders.map((p, i) => {
+            const fromLast = props.lastArgs?.[p.name] !== undefined;
+            return (
+              <Field
+                key={p.name}
+                label={p.name}
+                value={values[p.name]!}
+                focused={i === focus}
+                hint={fromLast ? '(last used)' : p.default !== undefined ? `(default: ${p.default})` : undefined}
+              />
+            );
+          })}
+        </Box>
+      </Panel>
+      <Panel title="will run">
         <Text wrap="wrap">
+          <Text dimColor>$ </Text>
           {renderSegments(props.entry.command, values).map((seg, i) =>
             seg.substituted ? (
               <Text key={i} bold color="cyan">{seg.text}</Text>
@@ -372,7 +475,8 @@ function ArgsScreen(props: {
             ),
           )}
         </Text>
-      </Box>
+      </Panel>
+      <Box flexGrow={1} />
       <Footer
         flash={props.flash}
         keys={[
@@ -405,13 +509,20 @@ function EditScreen(props: {
   const [focus, setFocus] = useState(0);
   const order = ['name', 'command', 'description'] as const;
 
+  const name = fields.name.trim();
+  const taken = name !== '' && props.isTaken(name);
+  const problem = !name
+    ? 'name is required'
+    : taken
+      ? `'${name}' already exists`
+      : !fields.command.trim()
+        ? 'command is required'
+        : null;
+
   useInput((input, key) => {
     if (key.escape) return props.onBack();
     if (key.return) {
-      const name = fields.name.trim();
-      if (!name) return props.onInvalid('name is required');
-      if (!fields.command.trim()) return props.onInvalid('command is required');
-      if (props.isTaken(name)) return props.onInvalid(`'${name}' already exists`);
+      if (problem) return props.onInvalid(problem);
       // preserve unknown extra fields when editing an existing entry
       const entry: CommandEntry = { ...props.entry, command: fields.command };
       if (fields.description.trim()) entry.description = fields.description.trim();
@@ -428,21 +539,45 @@ function EditScreen(props: {
   const placeholders = parsePlaceholders(fields.command);
 
   return (
-    <Box flexDirection="column" marginTop={1}>
-      <Text bold>{props.original ? `edit '${props.original}'` : 'new command'}</Text>
-      <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column" flexGrow={1}>
+      <Panel title={props.original ? `edit '${props.original}'` : 'new command'}>
         <Field label="name" value={fields.name} focused={focus === 0} />
         <Field label="command" value={fields.command} focused={focus === 1} />
         <Field label="description" value={fields.description} focused={focus === 2} hint="(optional)" />
-      </Box>
-      {placeholders.length > 0 && (
-        <Box marginTop={1}>
-          <Text dimColor>
-            args detected:{' '}
-            {placeholders.map((p) => p.name + (p.default !== undefined ? `=${p.default}` : '')).join(', ')}
+        {taken && (
+          <Box marginTop={1}>
+            <Text color="red">⚠ '{name}' already exists</Text>
+          </Box>
+        )}
+      </Panel>
+      <Panel title="template">
+        {fields.command.trim() === '' ? (
+          <Text dimColor>type a command — {'{{name}}'} or {'{{name=default}}'} become args</Text>
+        ) : (
+          <Text wrap="wrap">
+            <Text dimColor>$ </Text>
+            {templateSegments(fields.command).map((seg, i) =>
+              seg.placeholder ? (
+                <Text key={i} bold color="yellow">{seg.text}</Text>
+              ) : (
+                <Text key={i} color="cyan">{seg.text}</Text>
+              ),
+            )}
           </Text>
-        </Box>
-      )}
+        )}
+        {placeholders.length > 0 && (
+          <Box marginTop={1} flexDirection="column">
+            <Text dimColor>args:</Text>
+            {placeholders.map((p) => (
+              <Text key={p.name}>
+                {'  '}<Text color="yellow">{p.name}</Text>
+                {p.default !== undefined && <Text dimColor> = {p.default}</Text>}
+              </Text>
+            ))}
+          </Box>
+        )}
+      </Panel>
+      <Box flexGrow={1} />
       <Footer
         flash={props.flash}
         keys={[
@@ -463,11 +598,11 @@ function DeleteScreen(props: { name: string; entry: CommandEntry; onConfirm: () 
     if (input === 'n' || input === 'N' || key.escape || key.return) return props.onBack();
   });
   return (
-    <Box flexDirection="column" marginTop={1}>
-      <Text>
-        delete <Text bold color="red">{props.name}</Text>?
-      </Text>
-      <Text dimColor wrap="truncate">  {props.entry.command}</Text>
+    <Box flexDirection="column" flexGrow={1}>
+      <Panel title={`delete '${props.name}'?`} titleColor="red" borderColor="red">
+        <Text dimColor wrap="truncate">$ {props.entry.command}</Text>
+      </Panel>
+      <Box flexGrow={1} />
       <Footer flash={null} keys={[['y', 'delete'], ['n / esc', 'keep']]} />
     </Box>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { searchCommands } from '../src/search';
+import { nameMatchIndices, searchCommands } from '../src/search';
 import type { CommandEntry } from '../src/library';
 import type { State } from '../src/state';
 
@@ -60,5 +60,24 @@ describe('fuzzy matching', () => {
       b: { command: 'echo x', description: 'listening things' },
     };
     expect(searchCommands(cmds, {}, 'listening')[0]).toBe('b');
+  });
+});
+
+describe('nameMatchIndices', () => {
+  test('returns the greedy subsequence positions in the name', () => {
+    expect(nameMatchIndices('dpl', 'deploy prod')).toEqual(new Set([0, 2, 3]));
+  });
+
+  test('is case-insensitive', () => {
+    expect(nameMatchIndices('DP', 'deploy prod')).toEqual(new Set([0, 2]));
+  });
+
+  test('null when the name does not match (row may have hit via description)', () => {
+    expect(nameMatchIndices('zzz', 'deploy prod')).toBeNull();
+  });
+
+  test('null on an empty or whitespace query', () => {
+    expect(nameMatchIndices('', 'deploy prod')).toBeNull();
+    expect(nameMatchIndices('  ', 'deploy prod')).toBeNull();
   });
 });
