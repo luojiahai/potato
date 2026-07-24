@@ -1,0 +1,26 @@
+# Release pipeline (spec §6.1): one job on tag push — build all four targets,
+# checksum, publish to GitHub Releases.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - run: bunx tsc --noEmit
+      - name: Build all targets
+        run: bash scripts/build.sh "${GITHUB_REF_NAME#v}"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/potato-*.tar.gz dist/SHA256SUMS --generate-notes

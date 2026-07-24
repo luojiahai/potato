@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["bun"],
+    "paths": {
+      // Ink optionally imports react-devtools-core, which breaks `bun build
+      // --compile` (spec §6.1); alias it to a no-op stub.
+      "react-devtools-core": ["./src/stubs/react-devtools-core.ts"]
+    }
+  },
+  "include": ["src", "tests"]
+}
