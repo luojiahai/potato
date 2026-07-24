@@ -50,7 +50,9 @@ sha256_check() {
 }
 
 main() {
-  local target asset base tmp expected rc_line rc_file shell_name existed_before
+  local target asset base expected rc_line rc_file shell_name existed_before
+  # tmp is intentionally NOT local: the EXIT trap below runs in the global
+  # scope after main() returns, where a local would be gone (set -u → unbound).
   target="$(detect_target)"
   asset="potato-${target}.tar.gz"
 
