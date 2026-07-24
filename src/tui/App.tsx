@@ -15,6 +15,8 @@ import { findById, type CommandEntry, type Library } from '../library';
 import { recordUse, type State } from '../state';
 import { nameMatchIndices, searchCommands } from '../search';
 import { parsePlaceholders, renderCommand, renderSegments, templateSegments } from '../placeholders';
+import { VERSION } from '../version';
+import { REPO } from '../update';
 
 export interface AppDeps {
   library: Library;
@@ -122,12 +124,24 @@ const BANNER = GLYPHS['p']!.map((_, row) =>
 export const BANNER_WIDTH = Math.max(...BANNER.map((l) => l.length));
 const BANNER_GRADIENT = ['#ffd75f', '#ffd75f', '#ffaf5f', '#ffaf5f', '#d78700', '#d78700'];
 
+const REPO_URL = `https://github.com/${REPO}`;
+
+// OSC 8 hyperlink: terminals that support it make `label` clickable, opening
+// `url`; the rest render `label` as plain text. string-width strips the escape
+// sequence, so Ink measures the visible label only.
+const osc8 = (url: string, label: string) => `]8;;${url}${label}]8;;`;
+
 function Banner() {
   return (
     <Box flexDirection="column" paddingX={1}>
       {BANNER.map((line, i) => (
         <Text key={i} color={BANNER_GRADIENT[i]}>{line}</Text>
       ))}
+      <Text dimColor>
+        {VERSION === 'dev' ? 'dev' : `v${VERSION}`}
+        {'  ·  '}
+        {osc8(REPO_URL, `github.com/${REPO}`)}
+      </Text>
     </Box>
   );
 }
