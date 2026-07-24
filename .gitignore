@@ -1,5 +1,5 @@
 node_modules/
-.claude/worktrees/
-.claude/skills/
+.claude/
+.agents/
 skills-lock.json
 pnpm-lock.yaml
