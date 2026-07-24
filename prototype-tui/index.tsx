@@ -1,6 +1,7 @@
 // PROTOTYPE — throwaway. Wayfinder ticket #6: what does potato look and feel like?
 // Three list-layout variants (Ctrl-V cycles). All state in memory. Not the implementation.
 
+import './force-color';
 import React, { useState } from 'react';
 import { render, Box, Text, useInput, useApp, useStdout } from 'ink';
 import { seedCommands, seedState, type Command, type CommandState } from './data';
