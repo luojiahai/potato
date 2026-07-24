@@ -63,7 +63,7 @@ main() {
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/potato-install.XXXXXX")"
   trap 'rm -rf "$tmp"' EXIT
 
-  say "downloading $asset…"
+  say "downloading ${asset}…"
   curl -fsSL -o "$tmp/$asset" "$base/$asset" || fail "download failed: $base/$asset"
   curl -fsSL -o "$tmp/SHA256SUMS" "$base/SHA256SUMS" || fail "download failed: $base/SHA256SUMS"
 
