@@ -12,6 +12,20 @@ bun install
 bun start
 ```
 
+## Feel the real hand-off (zsh)
+
+`bun start` on its own can only *print* the selected command — a child process can't
+touch its parent's prompt. To get the real pre-fill experience:
+
+```sh
+source potato-proto.zsh
+pp
+```
+
+Pick a command, press Enter — the TUI closes and the rendered command is sitting on
+your prompt line (`print -z`, per the hand-off decision in ticket #3). Press Enter
+again to actually execute, or edit/Ctrl-C it first. Nothing ever runs by itself.
+
 ## What's in it
 
 All state is in memory — nothing touches `~/.potato`. Seeded with realistic commands,

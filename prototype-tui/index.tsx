@@ -23,7 +23,8 @@ type Screen =
 let handoff: string | null = null; // printed after exit, simulating the shell pre-fill
 
 function copyOsc52(text: string) {
-  process.stdout.write(`\x1b]52;c;${Buffer.from(text).toString('base64')}\x07`);
+  // stderr: stdout is reserved for the selection hand-off
+  process.stderr.write(`\x1b]52;c;${Buffer.from(text).toString('base64')}\x07`);
 }
 
 // ---------- shared chrome ----------
@@ -525,11 +526,19 @@ function DeleteScreen(props: { cmd: Command; onConfirm: () => void; onBack: () =
 
 // ---------- bootstrap ----------
 
-process.stdout.write('\x1b[?1049h'); // alt screen so the prototype leaves no scrollback
-const app = render(<App />, { exitOnCtrlC: true });
+// fzf-style split: the TUI renders on stderr, stdout carries only the selected
+// command — so `cmd="$(bun run index.tsx)"` in a shell function captures it.
+process.stderr.write('\x1b[?1049h'); // alt screen so the prototype leaves no scrollback
+const app = render(<App />, { stdout: process.stderr, exitOnCtrlC: true });
 await app.waitUntilExit();
-process.stdout.write('\x1b[?1049l');
+process.stderr.write('\x1b[?1049l');
 if (handoff !== null) {
-  console.log('\x1b[2mwould pre-fill your shell prompt with:\x1b[0m');
-  console.log(`  ${handoff}`);
+  if (process.stdout.isTTY) {
+    // run directly, not through the shell widget — explain instead of pre-filling
+    console.log('\x1b[2mwould pre-fill your shell prompt with:\x1b[0m');
+    console.log(`  ${handoff}`);
+    console.log('\x1b[2mtip: `source potato-proto.zsh` then run `pp` to get it on your real prompt\x1b[0m');
+  } else {
+    process.stdout.write(handoff + '\n');
+  }
 }
