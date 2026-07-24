@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadLibraryMigrating, migrateLibrary, parseLibraryV1, rekeyState } from '../src/migrate';
-import { LibraryError } from '../src/library';
+import { LibraryError, parseLibrary, serializeLibrary } from '../src/library';
 
 // v1 → v2 migration: fresh UUIDs, a name→id map that also rekeys state, and an
 // atomic auto-on-load upgrade that leaves the v1 file intact on failure.
@@ -35,6 +35,29 @@ describe('migrateLibrary', () => {
     const { library } = migrateLibrary(v1);
     expect((library as { color?: string }).color).toBe('blue');
     expect((library.commands[0] as { note?: string }).note).toBe('keep');
+  });
+
+  test('a stray v1 field named id/name/command cannot clobber the minted identity', () => {
+    // v1 tolerated arbitrary unknown fields; these reserved-looking ones must
+    // not override the minted id, the map-keyed name, or the command.
+    const v1 = {
+      version: 1 as const,
+      commands: {
+        a: { command: 'echo a', id: 'evil', name: 'spoof' },
+        b: { command: 'echo b', id: 'evil' }, // same stray id — would dup on reload
+      },
+    };
+    const { library, nameToId } = migrateLibrary(v1);
+    const [a, b] = library.commands;
+    // minted ids win, stay unique, and match the name→id map
+    expect(a!.id).not.toBe('evil');
+    expect(a!.id).not.toBe(b!.id);
+    expect(nameToId.get('a')).toBe(a!.id);
+    // map-keyed names and commands are the real ones
+    expect(a!.name).toBe('a');
+    expect(a!.command).toBe('echo a');
+    // the result round-trips through the strict v2 parser (no duplicate id)
+    expect(() => parseLibrary(serializeLibrary(library), 'migrated')).not.toThrow();
   });
 });
 

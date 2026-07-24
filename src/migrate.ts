@@ -75,7 +75,11 @@ export function migrateLibrary(v1: LibraryV1): { library: Library; nameToId: Map
     const { command, description, ...entryExtra } = entry;
     const id = randomUUID();
     nameToId.set(name, id);
-    const e: CommandEntry = { id, name, ...(description !== undefined ? { description } : {}), command, ...entryExtra };
+    // entryExtra spreads FIRST so the minted id, the map-keyed name, and the
+    // command can never be clobbered by a stray v1 field named id/name/command
+    // (v1 tolerated arbitrary unknowns) — that would desync the name→id map or
+    // mint a duplicate id that fails to re-parse.
+    const e: CommandEntry = { ...entryExtra, id, name, ...(description !== undefined ? { description } : {}), command };
     commands.push(e);
   }
   return { library: { version: 2, commands, ...extra }, nameToId };
