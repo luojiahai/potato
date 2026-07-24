@@ -3,8 +3,9 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// CLI seams: `potato import` (spec §7) run as a real subprocess against a
-// POTATO_INSTALL temp dir, plus the pure helpers behind update/uninstall.
+// CLI seams: `potato import` (merge / override / migrate-on-load) run as a real
+// subprocess against a POTATO_INSTALL temp dir, plus the pure helpers behind
+// update/uninstall.
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.tsx');
 
@@ -22,62 +23,120 @@ function run(args: string[], opts: { home?: string; stdin?: string } = {}) {
   };
 }
 
-const lib = (commands: Record<string, unknown>) => JSON.stringify({ version: 1, commands });
+type Entry = { id: string; name: string; command: string; description?: string };
+const v2 = (commands: Entry[]) => JSON.stringify({ version: 2, commands });
+const readLib = (home: string) => JSON.parse(readFileSync(join(home, 'commands.json'), 'utf8'));
 
-describe('potato import', () => {
-  test('adds new names and reports them; exit 0', () => {
+describe('potato import (--merge, the default)', () => {
+  test('adds new names and reports them; writes a v2 library; exit 0', () => {
     const dir = mkdtempSync(join(tmpdir(), 'potato-in-'));
     const incoming = join(dir, 'theirs.json');
-    writeFileSync(incoming, lib({ hello: { command: 'echo hi' } }));
+    writeFileSync(incoming, v2([{ id: 't1', name: 'hello', command: 'echo hi' }]));
     const result = run(['import', incoming]);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('hello');
-    const saved = JSON.parse(readFileSync(join(result.home, 'commands.json'), 'utf8'));
-    expect(saved.commands.hello.command).toBe('echo hi');
+    expect(result.stdout).toContain('added: hello');
+    const saved = readLib(result.home);
+    expect(saved.version).toBe(2);
+    const hello = saved.commands.find((c: Entry) => c.name === 'hello');
+    expect(hello.command).toBe('echo hi');
+    // a fresh id was minted (incoming id ignored)
+    expect(hello.id).not.toBe('t1');
   });
 
-  test('differing collisions are skipped and reported; ours kept; exit 0', () => {
+  test('a name collision keeps both, renaming the incoming copy', () => {
     const home = mkdtempSync(join(tmpdir(), 'potato-home-'));
-    writeFileSync(join(home, 'commands.json'), lib({ x: { command: 'ours' } }));
+    writeFileSync(join(home, 'commands.json'), v2([{ id: 'o1', name: 'x', command: 'ours' }]));
     const dir = mkdtempSync(join(tmpdir(), 'potato-in-'));
     const incoming = join(dir, 'theirs.json');
-    writeFileSync(incoming, lib({ x: { command: 'theirs' } }));
+    writeFileSync(incoming, v2([{ id: 't1', name: 'x', command: 'theirs' }]));
     const result = run(['import', incoming], { home });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.toLowerCase()).toContain('skipped');
-    expect(result.stdout).toContain('x');
-    expect(JSON.parse(readFileSync(join(home, 'commands.json'), 'utf8')).commands.x.command).toBe('ours');
+    expect(result.stdout).toContain('kept both: x → x (1)');
+    const saved = readLib(home);
+    expect(saved.commands.find((c: Entry) => c.name === 'x').command).toBe('ours');
+    expect(saved.commands.find((c: Entry) => c.name === 'x (1)').command).toBe('theirs');
   });
 
-  test('--theirs overwrites collisions', () => {
+  test('nothing to import on an empty incoming library', () => {
+    const result = run(['import', '-'], { stdin: v2([]) });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('nothing to import');
+  });
+
+  test('- reads from stdin', () => {
+    const result = run(['import', '-'], { stdin: v2([{ id: 't1', name: 'piped', command: 'echo pipe' }]) });
+    expect(result.exitCode).toBe(0);
+    expect(readLib(result.home).commands.find((c: Entry) => c.name === 'piped').command).toBe('echo pipe');
+  });
+});
+
+describe('potato import --override', () => {
+  test('replaces the whole library with the incoming file as-is', () => {
     const home = mkdtempSync(join(tmpdir(), 'potato-home-'));
-    writeFileSync(join(home, 'commands.json'), lib({ x: { command: 'ours' } }));
+    writeFileSync(join(home, 'commands.json'), v2([{ id: 'o1', name: 'mine', command: 'keep?' }]));
     const dir = mkdtempSync(join(tmpdir(), 'potato-in-'));
     const incoming = join(dir, 'theirs.json');
-    writeFileSync(incoming, lib({ x: { command: 'theirs' } }));
-    const result = run(['import', incoming, '--theirs'], { home });
+    writeFileSync(incoming, v2([{ id: 't1', name: 'theirs', command: 'echo t' }]));
+    const result = run(['import', incoming, '--override'], { home });
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(readFileSync(join(home, 'commands.json'), 'utf8')).commands.x.command).toBe('theirs');
+    expect(result.stdout).toContain('replaced your Library');
+    const saved = readLib(home);
+    expect(saved.commands.map((c: Entry) => c.name)).toEqual(['theirs']);
+    // ids kept as-is under --override
+    expect(saved.commands[0].id).toBe('t1');
   });
+});
 
+describe('potato import — failure and migration', () => {
   test('an invalid incoming file aborts all-or-nothing with file + reason', () => {
     const home = mkdtempSync(join(tmpdir(), 'potato-home-'));
-    writeFileSync(join(home, 'commands.json'), lib({ keep: { command: 'ls' } }));
+    writeFileSync(join(home, 'commands.json'), v2([{ id: 'o1', name: 'keep', command: 'ls' }]));
     const dir = mkdtempSync(join(tmpdir(), 'potato-in-'));
     const incoming = join(dir, 'bad.json');
-    writeFileSync(incoming, '{"version": 99, "commands": {}}');
+    writeFileSync(incoming, '{"version": 99, "commands": []}');
     const result = run(['import', incoming], { home });
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain('bad.json');
     // library untouched
-    expect(JSON.parse(readFileSync(join(home, 'commands.json'), 'utf8')).commands.keep.command).toBe('ls');
+    expect(readLib(home).commands.find((c: Entry) => c.name === 'keep').command).toBe('ls');
   });
 
-  test('- reads from stdin', () => {
-    const result = run(['import', '-'], { stdin: lib({ piped: { command: 'echo pipe' } }) });
+  test('a still-v1 incoming file is rejected (import reads v2 only)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'potato-in-'));
+    const incoming = join(dir, 'old.json');
+    writeFileSync(incoming, JSON.stringify({ version: 1, commands: { legacy: { command: 'ls' } } }));
+    const result = run(['import', incoming]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toLowerCase()).toContain('unsupported version 1');
+  });
+
+  test('our own v1 library auto-migrates on load, rekeying state, with a notice', () => {
+    const home = mkdtempSync(join(tmpdir(), 'potato-home-'));
+    writeFileSync(
+      join(home, 'commands.json'),
+      JSON.stringify({ version: 1, commands: { legacy: { command: 'echo old' } } }),
+    );
+    writeFileSync(
+      join(home, 'state.json'),
+      JSON.stringify({ legacy: { lastUsedAt: '2026-07-01T00:00:00.000Z' }, ghost: { lastUsedAt: '2026-01-01T00:00:00.000Z' } }),
+    );
+    const dir = mkdtempSync(join(tmpdir(), 'potato-in-'));
+    const incoming = join(dir, 'theirs.json');
+    writeFileSync(incoming, v2([{ id: 't1', name: 'fresh', command: 'echo new' }]));
+
+    const result = run(['import', incoming], { home });
     expect(result.exitCode).toBe(0);
-    const saved = JSON.parse(readFileSync(join(result.home, 'commands.json'), 'utf8'));
-    expect(saved.commands.piped.command).toBe('echo pipe');
+    expect(result.stderr).toContain('upgraded your library to v2');
+
+    const saved = readLib(home);
+    expect(saved.version).toBe(2);
+    const legacy = saved.commands.find((c: Entry) => c.name === 'legacy');
+    expect(legacy.command).toBe('echo old');
+    // state rekeyed name→id; orphan 'ghost' dropped
+    const state = JSON.parse(readFileSync(join(home, 'state.json'), 'utf8'));
+    expect(state.legacy).toBeUndefined();
+    expect(state.ghost).toBeUndefined();
+    expect(state[legacy.id].lastUsedAt).toBe('2026-07-01T00:00:00.000Z');
   });
 });
 

@@ -1,5 +1,6 @@
-// State: ~/.potato/state.json (spec §1.2) — a disposable per-Command cache of
-// last-used time and last Placeholder values. Unreadable state resets to {}.
+// State: ~/.potato/state.json — a disposable per-Command cache of last-used
+// time and last Placeholder values, keyed by Command id so it survives
+// renames. Unreadable state resets to {}.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -27,12 +28,12 @@ export function saveState(path: string, state: State): void {
   writeFileSync(path, JSON.stringify(state, null, 2) + '\n');
 }
 
-export function recordUse(state: State, name: string, args: Record<string, string>, now: Date): State {
+export function recordUse(state: State, id: string, args: Record<string, string>, now: Date): State {
   return {
     ...state,
-    [name]: {
+    [id]: {
       lastUsedAt: now.toISOString(),
-      args: { ...state[name]?.args, ...args },
+      args: { ...state[id]?.args, ...args },
     },
   };
 }

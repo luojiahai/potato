@@ -4,23 +4,25 @@ import type { CommandEntry } from '../src/library';
 import type { State } from '../src/state';
 
 // Spec §3.1: match over name + description + command, name weighted highest,
-// then description, then command. Empty query: MRU first, never-used follow
-// in file order.
+// then description, then command. Empty query: MRU first (State keyed by id),
+// never-used follow in file (array) order.
 
-const commands: Record<string, CommandEntry> = {
-  'deploy prod': { command: 'ssh prod-1 deploy.sh', description: 'Roll out to production' },
-  'tail logs': { command: 'aws logs tail /ecs/api --follow', description: 'Tail ECS logs' },
-  'docker nuke': { command: 'docker system prune -af', description: 'Remove unused containers' },
-  'list ports': { command: 'lsof -iTCP -sTCP:LISTEN', description: 'Show listening processes' },
-};
+const commands: CommandEntry[] = [
+  { id: 'c1', name: 'deploy prod', command: 'ssh prod-1 deploy.sh', description: 'Roll out to production' },
+  { id: 'c2', name: 'tail logs', command: 'aws logs tail /ecs/api --follow', description: 'Tail ECS logs' },
+  { id: 'c3', name: 'docker nuke', command: 'docker system prune -af', description: 'Remove unused containers' },
+  { id: 'c4', name: 'list ports', command: 'lsof -iTCP -sTCP:LISTEN', description: 'Show listening processes' },
+];
+
+const names = (result: CommandEntry[]) => result.map((c) => c.name);
 
 describe('empty query', () => {
   test('MRU first, never-used in file order after', () => {
     const state: State = {
-      'docker nuke': { lastUsedAt: '2026-07-20T00:00:00Z' },
-      'tail logs': { lastUsedAt: '2026-07-23T00:00:00Z' },
+      c3: { lastUsedAt: '2026-07-20T00:00:00Z' },
+      c2: { lastUsedAt: '2026-07-23T00:00:00Z' },
     };
-    expect(searchCommands(commands, state, '')).toEqual([
+    expect(names(searchCommands(commands, state, ''))).toEqual([
       'tail logs',
       'docker nuke',
       'deploy prod',
@@ -29,7 +31,7 @@ describe('empty query', () => {
   });
 
   test('no state at all keeps pure file order', () => {
-    expect(searchCommands(commands, {}, '')).toEqual([
+    expect(names(searchCommands(commands, {}, ''))).toEqual([
       'deploy prod',
       'tail logs',
       'docker nuke',
@@ -40,7 +42,7 @@ describe('empty query', () => {
 
 describe('fuzzy matching', () => {
   test('subsequence matches on the name', () => {
-    expect(searchCommands(commands, {}, 'dpl')).toContain('deploy prod');
+    expect(names(searchCommands(commands, {}, 'dpl'))).toContain('deploy prod');
   });
 
   test('non-matching commands are filtered out', () => {
@@ -50,16 +52,16 @@ describe('fuzzy matching', () => {
   test('a name hit outranks a description hit', () => {
     // "tail" is the name of one command and in the description of another
     const result = searchCommands(commands, {}, 'tail');
-    expect(result[0]).toBe('tail logs');
+    expect(result[0]!.name).toBe('tail logs');
   });
 
   test('a description hit outranks a command-text hit', () => {
-    // "listen" appears in list ports' description and docker nuke matches nothing
-    const cmds: Record<string, CommandEntry> = {
-      a: { command: 'echo listening' },
-      b: { command: 'echo x', description: 'listening things' },
-    };
-    expect(searchCommands(cmds, {}, 'listening')[0]).toBe('b');
+    // "listen" appears in b's description and a matches only in its command
+    const cmds: CommandEntry[] = [
+      { id: 'a', name: 'a', command: 'echo listening' },
+      { id: 'b', name: 'b', command: 'echo x', description: 'listening things' },
+    ];
+    expect(searchCommands(cmds, {}, 'listening')[0]!.name).toBe('b');
   });
 });
 

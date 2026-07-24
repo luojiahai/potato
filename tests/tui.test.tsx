@@ -2,26 +2,34 @@ import { describe, expect, test } from 'bun:test';
 import React from 'react';
 import { render } from 'ink-testing-library';
 import { App, type AppDeps } from '../src/tui/App';
-import type { Library } from '../src/library';
+import type { CommandEntry, Library } from '../src/library';
 import type { State } from '../src/state';
 
 // TUI flow tests (spec §3): split-pane list with fuzzy search, single-form
 // arg screen with live preview, footer keybindings, hand-off via callback.
+// Identity is the Command id; State is keyed by id; a rename keeps id + slot.
 
 const KEYS = { enter: '\r', esc: '\x1b', ctrlY: '\x19', ctrlA: '\x01', ctrlE: '\x05', ctrlD: '\x04' };
 
+const DEPLOY = 'id-deploy';
+const PORTS = 'id-ports';
+
+const byName = (lib: Library, name: string): CommandEntry | undefined =>
+  lib.commands.find((c) => c.name === name);
+
 function makeDeps(overrides: Partial<AppDeps> = {}) {
   const library: Library = {
-    version: 1,
-    commands: {
-      'deploy prod': { command: "ssh {{host=prod-1}} 'deploy.sh'", description: 'Roll out to production' },
-      'list ports': { command: 'lsof -iTCP -sTCP:LISTEN', description: 'Show listening processes' },
-    },
+    version: 2,
+    commands: [
+      { id: DEPLOY, name: 'deploy prod', description: 'Roll out to production', command: "ssh {{host=prod-1}} 'deploy.sh'" },
+      { id: PORTS, name: 'list ports', description: 'Show listening processes', command: 'lsof -iTCP -sTCP:LISTEN' },
+    ],
   };
   const saved: { library: Library[]; state: State[]; copied: string[] } = { library: [], state: [], copied: [] };
   const deps: AppDeps = {
     library,
     state: {},
+    migrated: false,
     saveLibrary: (lib) => saved.library.push(structuredClone(lib)),
     saveState: (s) => saved.state.push(structuredClone(s)),
     copy: (text) => saved.copied.push(text),
@@ -66,9 +74,9 @@ describe('list screen', () => {
     expect(lastFrame()!).not.toContain('list ports ⌁');
   });
 
-  test('detail pane shows a relative last-used time from State', async () => {
+  test('detail pane shows a relative last-used time from State (keyed by id)', async () => {
     const { deps } = makeDeps({
-      state: { 'deploy prod': { lastUsedAt: '2026-07-24T08:00:00Z' } },
+      state: { [DEPLOY]: { lastUsedAt: '2026-07-24T08:00:00Z' } },
     });
     const { lastFrame } = render(<App deps={deps} onHandoff={() => {}} />);
     await tick();
@@ -85,10 +93,17 @@ describe('list screen', () => {
     expect(frame).toContain('list ports');
     expect(frame).not.toContain('deploy prod');
   });
+
+  test('a migrated launch shows a footer toast', async () => {
+    const { deps } = makeDeps({ migrated: true });
+    const { lastFrame } = render(<App deps={deps} onHandoff={() => {}} />);
+    await tick();
+    expect(lastFrame()!).toContain('upgraded your library to v2');
+  });
 });
 
 describe('hand-off', () => {
-  test('Enter on a command without Placeholders hands off immediately and records use', async () => {
+  test('Enter on a command without Placeholders hands off immediately and records use by id', async () => {
     const { deps, saved } = makeDeps();
     const handoffs: string[] = [];
     const { stdin } = render(<App deps={deps} onHandoff={(c) => handoffs.push(c)} />);
@@ -98,7 +113,7 @@ describe('hand-off', () => {
     stdin.write(KEYS.enter);
     await tick();
     expect(handoffs).toEqual(['lsof -iTCP -sTCP:LISTEN']);
-    expect(saved.state.at(-1)?.['list ports']?.lastUsedAt).toBe('2026-07-24T10:00:00.000Z');
+    expect(saved.state.at(-1)?.[PORTS]?.lastUsedAt).toBe('2026-07-24T10:00:00.000Z');
   });
 
   test('Enter on a templated command opens the arg form pre-filled with the default', async () => {
@@ -127,13 +142,13 @@ describe('hand-off', () => {
     stdin.write(KEYS.enter);
     await tick();
     expect(handoffs).toEqual(["ssh prod-2 'deploy.sh'"]);
-    // last value remembered in State
-    expect(saved.state.at(-1)?.['deploy prod']?.args).toEqual({ host: 'prod-2' });
+    // last value remembered in State, keyed by id
+    expect(saved.state.at(-1)?.[DEPLOY]?.args).toEqual({ host: 'prod-2' });
   });
 
   test('last value outranks the default on the next visit', async () => {
     const { deps } = makeDeps({
-      state: { 'deploy prod': { lastUsedAt: '2026-07-01T00:00:00Z', args: { host: 'prod-9' } } },
+      state: { [DEPLOY]: { lastUsedAt: '2026-07-01T00:00:00Z', args: { host: 'prod-9' } } },
     });
     const { lastFrame, stdin } = render(<App deps={deps} onHandoff={() => {}} />);
     await tick();
@@ -155,7 +170,7 @@ describe('hand-off', () => {
 });
 
 describe('CRUD', () => {
-  test('Ctrl-A add flow saves a new Command to the Library', async () => {
+  test('Ctrl-A add flow saves a new Command with a fresh id', async () => {
     const { deps, saved } = makeDeps();
     const { stdin } = render(<App deps={deps} onHandoff={() => {}} />);
     await tick();
@@ -170,7 +185,10 @@ describe('CRUD', () => {
     stdin.write(KEYS.enter);
     await tick();
     const lib = saved.library.at(-1)!;
-    expect(lib.commands['pwd now']).toEqual({ command: 'pwd' });
+    const added = byName(lib, 'pwd now')!;
+    expect(added.command).toBe('pwd');
+    expect(added.id).toBeTruthy();
+    expect(lib.commands).toHaveLength(3);
   });
 
   test('edit screen shows a live template preview with parsed args', async () => {
@@ -208,10 +226,10 @@ describe('CRUD', () => {
     expect(lastFrame()!.toLowerCase()).toContain('delete');
     stdin.write('y');
     await tick();
-    expect(saved.library.at(-1)!.commands['deploy prod']).toBeUndefined();
+    expect(byName(saved.library.at(-1)!, 'deploy prod')).toBeUndefined();
   });
 
-  test('renaming a Command keeps its position in the file (order is meaningful)', async () => {
+  test('renaming a Command keeps its id and its slot in the file', async () => {
     const { deps, saved } = makeDeps();
     const { stdin } = render(<App deps={deps} onHandoff={() => {}} />);
     await tick();
@@ -223,7 +241,10 @@ describe('CRUD', () => {
     await tick();
     stdin.write(KEYS.enter);
     await tick();
-    expect(Object.keys(saved.library.at(-1)!.commands)).toEqual(['deploy stage', 'list ports']);
+    const lib = saved.library.at(-1)!;
+    expect(lib.commands.map((c) => c.name)).toEqual(['deploy stage', 'list ports']);
+    // id preserved across the rename (so State survives)
+    expect(lib.commands[0]!.id).toBe(DEPLOY);
   });
 
   test('Ctrl-E edits the selected Command in place', async () => {
@@ -240,6 +261,6 @@ describe('CRUD', () => {
     await tick();
     stdin.write(KEYS.enter);
     await tick();
-    expect(saved.library.at(-1)!.commands['deploy prod']!.command).toBe('ssh prod-3');
+    expect(byName(saved.library.at(-1)!, 'deploy prod')!.command).toBe('ssh prod-3');
   });
 });

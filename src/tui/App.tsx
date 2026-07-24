@@ -3,10 +3,15 @@
 // prototype accepted in the wayfinder effort (variant C); visual chrome is
 // the framed-panel redesign: every screen is built from titled round-border
 // panels, with match highlighting, arg-count badges, and last-used times.
+//
+// Identity is the Command's id (a UUID): screens carry ids, State is keyed by
+// id, and a rename keeps both the id and the file slot. Names are what the
+// user sees, searches, and must keep unique.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
-import type { CommandEntry, Library } from '../library';
+import { randomUUID } from 'node:crypto';
+import { findById, type CommandEntry, type Library } from '../library';
 import { recordUse, type State } from '../state';
 import { nameMatchIndices, searchCommands } from '../search';
 import { parsePlaceholders, renderCommand, renderSegments, templateSegments } from '../placeholders';
@@ -14,6 +19,7 @@ import { parsePlaceholders, renderCommand, renderSegments, templateSegments } fr
 export interface AppDeps {
   library: Library;
   state: State;
+  migrated: boolean;
   saveLibrary(lib: Library): void;
   saveState(state: State): void;
   copy(text: string): void;
@@ -22,9 +28,9 @@ export interface AppDeps {
 
 type Screen =
   | { kind: 'list' }
-  | { kind: 'args'; name: string }
-  | { kind: 'edit'; original: string | null }
-  | { kind: 'delete'; name: string };
+  | { kind: 'args'; id: string }
+  | { kind: 'edit'; id: string | null } // id null = new command
+  | { kind: 'delete'; id: string };
 
 // ---------- shared chrome ----------
 
@@ -163,13 +169,20 @@ export function App({ deps, onHandoff }: { deps: AppDeps; onHandoff: (command: s
   const [screen, setScreen] = useState<Screen>({ kind: 'list' });
   const [flash, setFlashRaw] = useState<string | null>(null);
 
-  const setFlash = (msg: string) => {
+  const setFlash = (msg: string, ms = 1500) => {
     setFlashRaw(msg);
-    setTimeout(() => setFlashRaw(null), 1500);
+    setTimeout(() => setFlashRaw(null), ms);
   };
 
-  const rememberUse = (name: string, args: Record<string, string>) => {
-    const next = recordUse(state, name, args, deps.now());
+  // A v1→v2 upgrade happened on this launch: announce it with a transient
+  // footer toast, populated from the first frame (migration ran pre-render).
+  useEffect(() => {
+    if (deps.migrated) setFlash('upgraded your library to v2', 4000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const rememberUse = (id: string, args: Record<string, string>) => {
+    const next = recordUse(state, id, args, deps.now());
     setState(next);
     deps.saveState(next);
   };
@@ -179,15 +192,15 @@ export function App({ deps, onHandoff }: { deps: AppDeps; onHandoff: (command: s
     deps.saveLibrary(next);
   };
 
-  const run = (name: string, values: Record<string, string>) => {
-    rememberUse(name, values);
-    onHandoff(renderCommand(library.commands[name]!.command, values));
+  const run = (id: string, values: Record<string, string>) => {
+    rememberUse(id, values);
+    onHandoff(renderCommand(findById(library, id)!.command, values));
     exit();
   };
 
-  const copy = (name: string, values: Record<string, string>) => {
-    rememberUse(name, values);
-    deps.copy(renderCommand(library.commands[name]!.command, values));
+  const copy = (id: string, values: Record<string, string>) => {
+    rememberUse(id, values);
+    deps.copy(renderCommand(findById(library, id)!.command, values));
     setFlash('copied to clipboard');
   };
 
@@ -196,6 +209,9 @@ export function App({ deps, onHandoff }: { deps: AppDeps; onHandoff: (command: s
   // hide the banner on short or narrow terminals to keep the screens usable
   // (app paddingX 1 + banner paddingX 1 on both sides = 4 extra columns)
   const showBanner = rows >= 19 && columns >= BANNER_WIDTH + 4;
+
+  const current = screen.kind !== 'list' && screen.kind !== 'edit' ? findById(library, screen.id) : undefined;
+  const editEntry = (screen.kind === 'edit' && screen.id ? findById(library, screen.id) : null) ?? null;
 
   return (
     <Box flexDirection="column" paddingX={1} height={rows}>
@@ -208,67 +224,74 @@ export function App({ deps, onHandoff }: { deps: AppDeps; onHandoff: (command: s
           banner={showBanner}
           flash={flash}
           now={deps.now}
-          onRun={(name) => {
-            if (parsePlaceholders(library.commands[name]!.command).length > 0)
-              setScreen({ kind: 'args', name });
-            else run(name, {});
+          onRun={(id) => {
+            if (parsePlaceholders(findById(library, id)!.command).length > 0)
+              setScreen({ kind: 'args', id });
+            else run(id, {});
           }}
-          onCopy={(name) => {
-            if (parsePlaceholders(library.commands[name]!.command).length > 0) {
-              setScreen({ kind: 'args', name });
+          onCopy={(id) => {
+            if (parsePlaceholders(findById(library, id)!.command).length > 0) {
+              setScreen({ kind: 'args', id });
               setFlash('needs args — fill in, then ^Y');
-            } else copy(name, {});
+            } else copy(id, {});
           }}
-          onAdd={() => setScreen({ kind: 'edit', original: null })}
-          onEdit={(name) => setScreen({ kind: 'edit', original: name })}
-          onDelete={(name) => setScreen({ kind: 'delete', name })}
+          onAdd={() => setScreen({ kind: 'edit', id: null })}
+          onEdit={(id) => setScreen({ kind: 'edit', id })}
+          onDelete={(id) => setScreen({ kind: 'delete', id })}
           onQuit={exit}
         />
       )}
-      {screen.kind === 'args' && (
+      {screen.kind === 'args' && current && (
         <ArgsScreen
-          name={screen.name}
-          entry={library.commands[screen.name]!}
-          lastArgs={state[screen.name]?.args}
+          entry={current}
+          lastArgs={state[current.id]?.args}
           flash={flash}
-          onRun={(values) => run(screen.name, values)}
-          onCopy={(values) => copy(screen.name, values)}
+          onRun={(values) => run(current.id, values)}
+          onCopy={(values) => copy(current.id, values)}
           onBack={() => setScreen({ kind: 'list' })}
         />
       )}
       {screen.kind === 'edit' && (
         <EditScreen
-          original={screen.original}
-          entry={screen.original ? library.commands[screen.original]! : null}
+          entry={editEntry}
           flash={flash}
-          onSave={(name, entry) => {
-            // file order is meaningful (spec §1.1): a rename keeps its slot,
-            // only genuinely new names are appended
-            const commands: typeof library.commands = {};
-            for (const [existing, value] of Object.entries(library.commands)) {
-              if (existing === screen.original) commands[name] = entry;
-              else commands[existing] = value;
+          onSave={(fields) => {
+            if (screen.id === null) {
+              const entry: CommandEntry = {
+                id: randomUUID(),
+                name: fields.name,
+                ...(fields.description ? { description: fields.description } : {}),
+                command: fields.command,
+              };
+              updateLibrary({ ...library, commands: [...library.commands, entry] });
+              setFlash('added');
+            } else {
+              // rename/edit in place: keep the id and the file slot (only the
+              // fields change), so State and array order both survive.
+              const commands = library.commands.map((c) => {
+                if (c.id !== screen.id) return c;
+                const next: CommandEntry = { ...c, name: fields.name, command: fields.command };
+                if (fields.description) next.description = fields.description;
+                else delete next.description;
+                return next;
+              });
+              updateLibrary({ ...library, commands });
+              setFlash('saved');
             }
-            if (screen.original === null) commands[name] = entry;
-            updateLibrary({ ...library, commands });
             setScreen({ kind: 'list' });
-            setFlash(screen.original ? 'saved' : 'added');
           }}
           onInvalid={setFlash}
-          isTaken={(name) => name !== screen.original && library.commands[name] !== undefined}
+          isTaken={(name) => library.commands.some((c) => c.name === name && c.id !== screen.id)}
           onBack={() => setScreen({ kind: 'list' })}
         />
       )}
-      {screen.kind === 'delete' && (
+      {screen.kind === 'delete' && current && (
         <DeleteScreen
-          name={screen.name}
-          entry={library.commands[screen.name]!}
+          entry={current}
           onConfirm={() => {
-            const commands = { ...library.commands };
-            delete commands[screen.name];
-            updateLibrary({ ...library, commands });
+            updateLibrary({ ...library, commands: library.commands.filter((c) => c.id !== current.id) });
             setScreen({ kind: 'list' });
-            setFlash(`deleted '${screen.name}'`);
+            setFlash(`deleted '${current.name}'`);
           }}
           onBack={() => setScreen({ kind: 'list' })}
         />
@@ -286,11 +309,11 @@ function ListScreen(props: {
   banner: boolean;
   flash: string | null;
   now: () => Date;
-  onRun: (name: string) => void;
-  onCopy: (name: string) => void;
+  onRun: (id: string) => void;
+  onCopy: (id: string) => void;
   onAdd: () => void;
-  onEdit: (name: string) => void;
-  onDelete: (name: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
   onQuit: () => void;
 }) {
   const [query, setQuery] = useState('');
@@ -299,15 +322,15 @@ function ListScreen(props: {
   const results = searchCommands(props.library.commands, props.state, query);
   const selIdx = Math.min(sel, Math.max(0, results.length - 1));
   const selected = results[selIdx];
-  const total = Object.keys(props.library.commands).length;
+  const total = props.library.commands.length;
 
   useInput((input, key) => {
     if (key.escape) return props.onQuit();
     if (isCtrl(input, key, 'a')) return props.onAdd();
-    if (isCtrl(input, key, 'e') && selected) return props.onEdit(selected);
-    if (isCtrl(input, key, 'd') && selected) return props.onDelete(selected);
-    if (isCtrl(input, key, 'y') && selected) return props.onCopy(selected);
-    if (key.return && selected) return props.onRun(selected);
+    if (isCtrl(input, key, 'e') && selected) return props.onEdit(selected.id);
+    if (isCtrl(input, key, 'd') && selected) return props.onDelete(selected.id);
+    if (isCtrl(input, key, 'y') && selected) return props.onCopy(selected.id);
+    if (key.return && selected) return props.onRun(selected.id);
     if (key.upArrow) return setSel((s) => Math.max(0, s - 1));
     if (key.downArrow) return setSel((s) => Math.min(results.length - 1, s + 1));
     if (isBackspace(input, key)) {
@@ -325,8 +348,7 @@ function ListScreen(props: {
   const visible = Math.max(2, props.rows - chrome);
   const start = Math.max(0, Math.min(selIdx - visible + 1, results.length - visible));
   const window = results.slice(start, start + visible);
-  const selectedEntry = selected ? props.library.commands[selected] : undefined;
-  const lastUsedAt = selected ? props.state[selected]?.lastUsedAt : undefined;
+  const lastUsedAt = selected ? props.state[selected.id]?.lastUsedAt : undefined;
   const used = lastUsedAt ? timeAgo(lastUsedAt, props.now()) : null;
 
   return (
@@ -346,20 +368,20 @@ function ListScreen(props: {
       <Box flexGrow={1}>
         <Panel title="commands" width={30}>
           {results.length === 0 && <Text dimColor>no matches</Text>}
-          {window.map((name, i) => {
+          {window.map((entry, i) => {
             const isSel = start + i === selIdx;
-            const matches = nameMatchIndices(query, name);
-            const argCount = parsePlaceholders(props.library.commands[name]!.command).length;
+            const matches = nameMatchIndices(query, entry.name);
+            const argCount = parsePlaceholders(entry.command).length;
             return (
-              <Box key={name}>
+              <Box key={entry.id}>
                 <Text color={ACCENT_COLOR}>{isSel ? '❯ ' : '  '}</Text>
                 <Text wrap="truncate">
                   <Text bold inverse={isSel}>
                     {matches
-                      ? name.split('').map((ch, ci) => (
+                      ? entry.name.split('').map((ch, ci) => (
                           <Text key={ci} color={matches.has(ci) ? 'yellow' : undefined}>{ch}</Text>
                         ))
-                      : name}
+                      : entry.name}
                   </Text>
                   {argCount > 0 && <Text dimColor color="cyan"> ⌁{argCount}</Text>}
                 </Text>
@@ -367,19 +389,19 @@ function ListScreen(props: {
             );
           })}
         </Panel>
-        {selected && selectedEntry ? (
-          <Panel title={selected} flexGrow={1}>
-            {selectedEntry.description && <Text dimColor>{selectedEntry.description}</Text>}
-            <Box marginTop={selectedEntry.description ? 1 : 0}>
+        {selected ? (
+          <Panel title={selected.name} flexGrow={1}>
+            {selected.description && <Text dimColor>{selected.description}</Text>}
+            <Box marginTop={selected.description ? 1 : 0}>
               <Text color="cyan" wrap="wrap">
                 <Text dimColor>$ </Text>
-                {selectedEntry.command}
+                {selected.command}
               </Text>
             </Box>
-            {parsePlaceholders(selectedEntry.command).length > 0 && (
+            {parsePlaceholders(selected.command).length > 0 && (
               <Box marginTop={1} flexDirection="column">
                 <Text dimColor>args:</Text>
-                {parsePlaceholders(selectedEntry.command).map((p) => (
+                {parsePlaceholders(selected.command).map((p) => (
                   <Text key={p.name}>
                     {'  '}<Text color="yellow">{p.name}</Text>
                     {p.default !== undefined && <Text dimColor> = {p.default}</Text>}
@@ -417,7 +439,6 @@ function ListScreen(props: {
 // ---------- arg form ----------
 
 function ArgsScreen(props: {
-  name: string;
   entry: CommandEntry;
   lastArgs?: Record<string, string>;
   flash: string | null;
@@ -445,7 +466,7 @@ function ArgsScreen(props: {
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Panel title={props.name}>
+      <Panel title={props.entry.name}>
         <Text dimColor>
           needs {placeholders.length} arg{placeholders.length > 1 ? 's' : ''}
         </Text>
@@ -493,16 +514,15 @@ function ArgsScreen(props: {
 // ---------- add / edit ----------
 
 function EditScreen(props: {
-  original: string | null;
   entry: CommandEntry | null;
   flash: string | null;
-  onSave: (name: string, entry: CommandEntry) => void;
+  onSave: (fields: { name: string; command: string; description: string }) => void;
   onInvalid: (msg: string) => void;
   isTaken: (name: string) => boolean;
   onBack: () => void;
 }) {
   const [fields, setFields] = useState({
-    name: props.original ?? '',
+    name: props.entry?.name ?? '',
     command: props.entry?.command ?? '',
     description: props.entry?.description ?? '',
   });
@@ -523,11 +543,7 @@ function EditScreen(props: {
     if (key.escape) return props.onBack();
     if (key.return) {
       if (problem) return props.onInvalid(problem);
-      // preserve unknown extra fields when editing an existing entry
-      const entry: CommandEntry = { ...props.entry, command: fields.command };
-      if (fields.description.trim()) entry.description = fields.description.trim();
-      else delete entry.description;
-      return props.onSave(name, entry);
+      return props.onSave({ name, command: fields.command, description: fields.description.trim() });
     }
     if (key.tab || key.downArrow) return setFocus((f) => (f + 1) % order.length);
     if (key.upArrow) return setFocus((f) => (f - 1 + order.length) % order.length);
@@ -540,7 +556,7 @@ function EditScreen(props: {
 
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Panel title={props.original ? `edit '${props.original}'` : 'new command'}>
+      <Panel title={props.entry ? `edit '${props.entry.name}'` : 'new command'}>
         <Field label="name" value={fields.name} focused={focus === 0} />
         <Field label="command" value={fields.command} focused={focus === 1} />
         <Field label="description" value={fields.description} focused={focus === 2} hint="(optional)" />
@@ -592,14 +608,14 @@ function EditScreen(props: {
 
 // ---------- delete confirm ----------
 
-function DeleteScreen(props: { name: string; entry: CommandEntry; onConfirm: () => void; onBack: () => void }) {
+function DeleteScreen(props: { entry: CommandEntry; onConfirm: () => void; onBack: () => void }) {
   useInput((input, key) => {
     if (input === 'y' || input === 'Y') return props.onConfirm();
     if (input === 'n' || input === 'N' || key.escape || key.return) return props.onBack();
   });
   return (
     <Box flexDirection="column" flexGrow={1}>
-      <Panel title={`delete '${props.name}'?`} titleColor="red" borderColor="red">
+      <Panel title={`delete '${props.entry.name}'?`} titleColor="red" borderColor="red">
         <Text dimColor wrap="truncate">$ {props.entry.command}</Text>
       </Panel>
       <Box flexGrow={1} />
