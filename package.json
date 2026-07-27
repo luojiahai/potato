@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "bun run src/cli.tsx",
+    "prototype:field": "bun run src/tui/prototype-field/run.tsx",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "build": "bash scripts/build.sh"
