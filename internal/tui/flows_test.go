@@ -99,8 +99,8 @@ func TestAddCreatesACommandWithAFreshID(t *testing.T) {
 	m, rec := harness(t)
 	press(m, []string{"ctrl+a"})
 	edit := m.screen.(*editScreen)
-	edit.inputs[0].SetValue("new one")
-	edit.inputs[1].SetValue("echo new")
+	edit.inputs[fieldName].SetValue("new one")
+	edit.inputs[fieldCommand].SetValue("echo new")
 	press(m, []string{"enter"})
 
 	if len(rec.libraries) != 1 {
@@ -125,7 +125,7 @@ func TestAddCreatesACommandWithAFreshID(t *testing.T) {
 func TestEditRenameKeepsTheIDAndTheSlot(t *testing.T) {
 	m, rec := harness(t)
 	press(m, []string{"ctrl+e"})
-	m.screen.(*editScreen).inputs[0].SetValue("renamed")
+	m.screen.(*editScreen).inputs[fieldName].SetValue("renamed")
 	press(m, []string{"enter"})
 
 	saved := rec.libraries[0]
@@ -144,8 +144,8 @@ func TestEditRefusesADuplicateName(t *testing.T) {
 	m, rec := harness(t)
 	press(m, []string{"ctrl+a"})
 	edit := m.screen.(*editScreen)
-	edit.inputs[0].SetValue("list ports")
-	edit.inputs[1].SetValue("echo x")
+	edit.inputs[fieldName].SetValue("list ports")
+	edit.inputs[fieldCommand].SetValue("echo x")
 	press(m, []string{"enter"})
 
 	if len(rec.libraries) != 0 {
@@ -165,6 +165,62 @@ func TestEditRefusesAnEmptyName(t *testing.T) {
 	}
 	if !strings.Contains(render(t, m), "name is required") {
 		t.Error("no flash explaining the refusal")
+	}
+}
+
+// The confirm is inline: it takes over the Command's row and leaves the rest
+// of the list screen — crucially the detail panel — standing, so you can see
+// what you are deleting while you answer.
+func TestDeleteConfirmsInlineWithoutLeavingTheList(t *testing.T) {
+	m, _ := harness(t)
+	press(m, []string{"ctrl+d"})
+
+	if _, ok := m.screen.(*listScreen); !ok {
+		t.Fatalf("^D left the list for %T", m.screen)
+	}
+	frame := render(t, m)
+	if !strings.Contains(frame, "⚠ delete? y/n") {
+		t.Errorf("no inline confirm:\n%s", frame)
+	}
+	if !strings.Contains(frame, "ssh {{host=prod-1}} 'deploy.sh'") {
+		t.Errorf("the detail panel stopped showing the command being deleted:\n%s", frame)
+	}
+	if !strings.Contains(frame, "y delete") {
+		t.Error("the footer does not offer the confirm keys")
+	}
+}
+
+// Anything that is not "yes" keeps the Command — a destructive action does not
+// get to read an unrelated keystroke as consent.
+func TestDeleteConfirmTreatsAnyOtherKeyAsCancel(t *testing.T) {
+	for _, key := range []string{"n", "x", "q"} {
+		m, rec := harness(t)
+		press(m, []string{"ctrl+d", key})
+		if len(rec.libraries) != 0 {
+			t.Errorf("%q deleted the Command", key)
+		}
+		if strings.Contains(render(t, m), "⚠ delete? y/n") {
+			t.Errorf("%q left the confirm open", key)
+		}
+	}
+}
+
+// The caret marks the one field that will receive a keystroke, and no other.
+func TestOnlyTheFocusedFieldCarriesTheCaret(t *testing.T) {
+	// Taken from the style rather than hand-written: lipgloss emits the
+	// foreground and background in one combined SGR, so the colours cannot be
+	// matched separately. No flash is raised in this flow, which matters
+	// because flashStyle happens to carry the same pair.
+	caret := strings.SplitN(caretStyle.Render("x"), "x", 2)[0]
+	m, _ := harness(t)
+	press(m, []string{"ctrl+a", "abc"})
+
+	if got := strings.Count(m.View().Content, caret); got != 1 {
+		t.Errorf("frame carries %d carets, want exactly 1", got)
+	}
+	press(m, []string{"tab"})
+	if got := strings.Count(m.View().Content, caret); got != 1 {
+		t.Errorf("after tab the frame carries %d carets, want exactly 1", got)
 	}
 }
 
@@ -232,13 +288,13 @@ func TestCtrlAIsAddOnTheListAndLineStartInTheEditor(t *testing.T) {
 	if !ok {
 		t.Fatalf("^A on the list screen opened %T, want the editor", m.screen)
 	}
-	edit.inputs[0].SetValue("abc")
+	edit.inputs[fieldName].SetValue("abc")
 	press(m, []string{"ctrl+a"})
 	if _, still := m.screen.(*editScreen); !still {
 		t.Fatal("^A inside the editor opened another screen")
 	}
-	if edit.inputs[0].Position() != 0 {
-		t.Errorf("^A did not move to line start: position %d", edit.inputs[0].Position())
+	if edit.inputs[fieldName].Position() != 0 {
+		t.Errorf("^A did not move to line start: position %d", edit.inputs[fieldName].Position())
 	}
 }
 

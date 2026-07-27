@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,14 +15,16 @@ import (
 	"github.com/luojiahai/potato/internal/state"
 )
 
-// Parity against the Ink build. testdata/parity/*.txt were captured from the
-// TypeScript TUI before it was deleted, at fixed terminal sizes with a fixed
-// clock; every frame here must reproduce one byte for byte.
+// Frame goldens. testdata/frames/*.txt are the rendered screens at fixed
+// terminal sizes with a fixed clock; every frame here must reproduce one byte
+// for byte, de-ANSI'd.
 //
-// One documented normalisation: Ink drew a decorative `▌` at the end of the
-// focused value, and the adopted textinput draws a real cursor over the cell
-// after it. Both are one column, so the goldens are compared with `▌` mapped
-// to a space. That is the whole of the rendering difference.
+// These began as captures from the Ink build, held to prove the Go rewrite
+// matched the TypeScript TUI it replaced. That job is done — the goldens were
+// re-baselined onto the Go renderer when the screens were redesigned, and they
+// now guard the Go build against unintended layout drift rather than fidelity
+// to a deleted implementation. Regenerate with `go test ./internal/tui
+// -update-frames` after a deliberate visual change, and read the diff.
 
 func fixtureDeps() Deps {
 	description := func(s string) *string { return &s }
@@ -79,89 +83,130 @@ func render(t *testing.T, m *Model) string {
 	return ansi.Strip(m.View().Content)
 }
 
-func TestParityWithInk(t *testing.T) {
+var updateFrames = flag.Bool("update-frames", false,
+	"rewrite testdata/frames from the current renderer")
+
+// emptyLibrary and longLibrary are the two shapes the fixture cannot show: the
+// screen a new user lands on, and one with more commands than the panel holds.
+func emptyLibrary() library.Library { return library.Library{Version: 2} }
+
+func longLibrary() library.Library {
+	lib := library.Library{Version: 2}
+	for i := 0; i < 15; i++ {
+		lib.Commands = append(lib.Commands, library.Entry{
+			ID:      fmt.Sprintf("id-%d", i),
+			Name:    fmt.Sprintf("command number %d", i),
+			Command: fmt.Sprintf("echo %d", i),
+		})
+	}
+	return lib
+}
+
+func TestFrames(t *testing.T) {
+	down := func(n int) []string {
+		keys := make([]string, n)
+		for i := range keys {
+			keys[i] = "down"
+		}
+		return keys
+	}
+
 	cases := []struct {
 		name     string
 		rows     int
 		columns  int
 		keys     []string
 		migrated bool
+		lib      *library.Library
 	}{
-		{name: "list-40x80", rows: 40, columns: 80},
+		// the three brand-block tiers and their boundaries
+		{name: "list-40x80-fullbanner", rows: 40, columns: 80},
+		{name: "list-30x80-fullbanner", rows: 30, columns: 80},
+		{name: "list-29x80-compact", rows: 29, columns: 80},
 		{name: "list-24x80", rows: 24, columns: 80},
-		{name: "list-19x80", rows: 19, columns: 80},
+		{name: "list-19x80-compact", rows: 19, columns: 80},
 		{name: "list-18x80-nobanner", rows: 18, columns: 80},
+		{name: "list-40x50-compact-narrow", rows: 40, columns: 50},
 		{name: "list-24x50-narrow", rows: 24, columns: 50},
+
 		{name: "list-24x80-query", rows: 24, columns: 80, keys: []string{"ports"}},
 		{name: "list-24x80-nomatch", rows: 24, columns: 80, keys: []string{"zzz"}},
 		{name: "list-24x80-down", rows: 24, columns: 80, keys: []string{"down"}},
 		{name: "list-24x80-migrated", rows: 24, columns: 80, migrated: true},
+
+		// the empty and overflowing states
+		{name: "list-24x80-empty", rows: 24, columns: 80, lib: ptr(emptyLibrary())},
+		{name: "list-14x80-scroll-top", rows: 14, columns: 80, lib: ptr(longLibrary())},
+		{name: "list-14x80-scroll-middle", rows: 14, columns: 80, lib: ptr(longLibrary()), keys: down(8)},
+		{name: "list-14x80-scroll-end", rows: 14, columns: 80, lib: ptr(longLibrary()), keys: down(14)},
+
+		// the confirm is inline on the list, not a screen of its own
+		{name: "list-24x80-confirm-delete", rows: 24, columns: 80, keys: []string{"ctrl+d"}},
+
 		{name: "args-24x80", rows: 24, columns: 80, keys: []string{"enter"}},
 		{name: "args-24x80-tab", rows: 24, columns: 80, keys: []string{"tail", "enter", "tab"}},
+		{name: "args-14x80-short", rows: 14, columns: 80, keys: []string{"tail", "enter"}},
 		{name: "edit-new-24x80", rows: 24, columns: 80, keys: []string{"ctrl+a"}},
+		{name: "edit-new-24x80-refused", rows: 24, columns: 80, keys: []string{"ctrl+a", "enter"}},
+		{name: "edit-new-24x80-typed", rows: 24, columns: 80, keys: []string{"ctrl+a", "backup", "tab", "tab", "tar -czf {{out=x.tgz}} ."}},
 		{name: "edit-existing-24x80", rows: 24, columns: 80, keys: []string{"ctrl+e"}},
-		{name: "delete-24x80", rows: 24, columns: 80, keys: []string{"ctrl+d"}},
+		{name: "edit-existing-14x80-short", rows: 14, columns: 80, keys: []string{"ctrl+e"}},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			deps := fixtureDeps()
 			deps.Migrated = tc.migrated
+			if tc.lib != nil {
+				deps.Library = *tc.lib
+				deps.State = state.State{}
+			}
 			m := New(deps)
 			m.SetSize(tc.columns, tc.rows)
 			m.Init()
 			press(m, tc.keys)
 
 			got := render(t, m)
-			want := goldenFrame(t, tc.name)
-
-			if reason, known := inkDegenerate[tc.name]; known {
-				// Ink's flexbox overflowed here and rendered something broken.
-				// potato-in-Go renders it correctly instead, so the frames
-				// differ by design; assert the geometry is still sound and
-				// that the difference has not silently disappeared.
-				if lines := strings.Count(got, "\n") + 1; lines != tc.rows {
-					t.Errorf("frame is %d lines, want %d", lines, tc.rows)
-				}
-				if got == want {
-					t.Errorf("frame now matches the Ink golden — drop %q from inkDegenerate", tc.name)
-				}
-				t.Logf("known difference: %s", reason)
+			// A frame that is not exactly as tall as the terminal will scroll
+			// or leave a gap, whatever else it gets right.
+			if lines := strings.Count(got, "\n") + 1; lines != tc.rows {
+				t.Errorf("frame is %d lines, want %d", lines, tc.rows)
+			}
+			if *updateFrames {
+				writeFrame(t, tc.name, got)
 				return
 			}
-
-			if got == want {
-				return
+			if want := goldenFrame(t, tc.name); got != want {
+				t.Errorf("frame differs from the golden\n%s", lineDiff(want, got))
 			}
-			t.Errorf("frame differs from the Ink golden\n%s", lineDiff(want, got))
 		})
 	}
 }
 
-// inkDegenerate lists the captured frames where Ink's flexbox ran out of room
-// and produced visibly broken output. Reproducing them would mean emulating
-// Yoga's flex-shrink over inline text; the Go build renders them correctly
-// instead, and each entry records what the difference is.
-var inkDegenerate = map[string]string{
-	"list-19x80": "Ink clipped the wordmark's top row and drew the detail panel's " +
-		"title and last line into its own borders (issue #55's symptom); the Go " +
-		"build fits the banner and the panel in 19 rows",
-	"list-24x50-narrow": "Ink squeezed the footer's key hints onto two rows, " +
-		"truncating '↵ run' to '↵ ru'; the Go build keeps the footer on one row",
+func ptr[T any](v T) *T { return &v }
+
+func framePath(name string) string {
+	return filepath.Join("..", "..", "testdata", "frames", name+".txt")
 }
 
 func goldenFrame(t *testing.T, name string) string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "parity", name+".txt"))
+	raw, err := os.ReadFile(framePath(name))
 	if err != nil {
-		t.Fatalf("missing golden: %v", err)
+		t.Fatalf("missing golden (regenerate with -update-frames): %v", err)
 	}
-	// the documented cursor-cell normalisation
-	lines := strings.Split(strings.ReplaceAll(string(raw), "▌", " "), "\n")
+	lines := strings.Split(string(raw), "\n")
 	for i, line := range lines {
 		lines[i] = strings.TrimRight(line, " ")
 	}
 	return strings.Join(lines, "\n")
+}
+
+func writeFrame(t *testing.T, name, frame string) {
+	t.Helper()
+	if err := os.WriteFile(framePath(name), []byte(frame), 0o644); err != nil {
+		t.Fatalf("writing golden: %v", err)
+	}
 }
 
 func lineDiff(want, got string) string {

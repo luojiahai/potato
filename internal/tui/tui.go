@@ -105,10 +105,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) View() tea.View {
-	var lines []string
-	if m.showBanner() {
-		lines = append(lines, banner()...)
-	}
+	lines := m.banner()
 	lines = append(lines, m.screen.view(m)...)
 	lines = append(lines, footer(m.screen.keys(m), m.flash)...)
 
@@ -122,20 +119,26 @@ func (m *Model) View() tea.View {
 	return view
 }
 
-// showBanner hides the wordmark on short or narrow terminals to keep the
-// screens usable (app paddingX 1 + banner paddingX 1 on both sides = 4 extra
-// columns).
-func (m *Model) showBanner() bool {
-	return m.height >= 19 && m.width >= bannerWidth()+4
+// bannerHeight is how many rows the brand block claims at this size. The full
+// wordmark needs room to spare in both directions (app paddingX 1 + banner
+// paddingX 1 on both sides = 4 extra columns); below that the compact row
+// carries the same version and link, and on a short terminal the block goes
+// entirely and the search panel's title carries the name instead.
+func (m *Model) bannerHeight() int {
+	switch {
+	case m.height < 19:
+		return 0
+	case m.height >= 30 && m.width >= bannerWidth()+4:
+		return bannerFull
+	default:
+		return bannerCompact
+	}
 }
 
 // bodyHeight is the space between the banner and the footer.
 func (m *Model) bodyHeight() int {
-	h := m.height - 2 // footer margin row + footer row
-	if m.showBanner() {
-		h -= bannerRowCount + 1
-	}
-	return max(0, h)
+	// footer margin row + footer row
+	return max(0, m.height-2-m.bannerHeight())
 }
 
 func (m *Model) innerWidth() int { return m.width - 2 }

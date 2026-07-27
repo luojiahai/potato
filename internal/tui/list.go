@@ -22,6 +22,10 @@ const listPanelWidth = 30
 type listScreen struct {
 	input textinput.Model
 	sel   int
+	// confirming holds the id of the Command awaiting a delete confirmation,
+	// or "". The confirm is inline rather than a screen of its own so the
+	// detail panel keeps showing what is about to be deleted while you answer.
+	confirming string
 }
 
 func newListScreen(m *Model) *listScreen {
@@ -41,6 +45,18 @@ func newField() textinput.Model {
 	input := textinput.New()
 	input.Prompt = ""
 	input.SetVirtualCursor(true)
+	// The bubbles defaults reach for ANSI palette indices, which would leave
+	// the caret and the text the user is typing coloured by their terminal
+	// theme rather than by potato.
+	styles := input.Styles()
+	styles.Cursor.Color = lipgloss.Color(accentColor)
+	for _, state := range []*textinput.StyleState{&styles.Focused, &styles.Blurred} {
+		state.Text = textStyle
+		state.Prompt = dimStyle
+		state.Placeholder = dimStyle
+		state.Suggestion = dimStyle
+	}
+	input.SetStyles(styles)
 	return input
 }
 
@@ -68,6 +84,19 @@ func (s *listScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	results := s.results(m)
 	selected := s.selected(m)
 
+	// While a confirm is open it owns the keyboard: the answer is one
+	// keystroke, and letting anything else through would let the query change
+	// under a confirm that names a Command by id.
+	if s.confirming != "" {
+		switch keyMsg.String() {
+		case "y", "Y":
+			return s.delete(m)
+		default:
+			s.confirming = ""
+			return nil
+		}
+	}
+
 	switch keyMsg.String() {
 	case "esc":
 		return tea.Quit
@@ -81,7 +110,7 @@ func (s *listScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 		return nil
 	case "ctrl+d":
 		if selected != nil {
-			m.screen = newDeleteScreen(selected.ID)
+			s.confirming = selected.ID
 		}
 		return nil
 	case "ctrl+y":
@@ -120,7 +149,30 @@ func (s *listScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
+// delete removes the Command the confirm names, by id — the query and the
+// selection may both have moved since the confirm opened.
+func (s *listScreen) delete(m *Model) tea.Cmd {
+	entry := library.FindByID(m.lib, s.confirming)
+	s.confirming = ""
+	if entry == nil {
+		return nil
+	}
+	next := m.lib
+	commands := make([]library.Entry, 0, len(m.lib.Commands))
+	for _, c := range m.lib.Commands {
+		if c.ID != entry.ID {
+			commands = append(commands, c)
+		}
+	}
+	next.Commands = commands
+	m.updateLibrary(next)
+	return m.flashDefault(fmt.Sprintf("deleted '%s'", entry.Name))
+}
+
 func (s *listScreen) keys(*Model) []footerKey {
+	if s.confirming != "" {
+		return []footerKey{{"y", "delete"}, {"n / esc", "keep"}}
+	}
 	return []footerKey{
 		{"↵", "run"}, {"^Y", "copy"}, {"^A", "add"},
 		{"^E", "edit"}, {"^D", "delete"}, {"esc", "quit"},
@@ -139,12 +191,12 @@ func (s *listScreen) view(m *Model) []string {
 		right = "(recently used first)  " + right
 	}
 	title := ""
-	if !m.showBanner() {
+	if m.bannerHeight() == 0 {
 		title = "potato"
 	}
-	left := cyanStyle.Bold(true).Render("/ ") + s.input.View()
+	left := accentStyle.Bold(true).Render("/ ") + s.input.View()
 	gap := max(0, (width-4)-ansi.StringWidth(left)-ansi.StringWidth(right))
-	lines := panel(title, boldStyle.Foreground(lipgloss.Color("3")), frameStyle, width,
+	lines := panel(title, boldStyle.Foreground(lipgloss.Color(accentColor)), frameStyle, width,
 		[]string{left + strings.Repeat(" ", gap) + dimStyle.Render(right)}, 3)
 
 	// the split pane fills what is left between the search panel and the footer
@@ -161,7 +213,9 @@ func (s *listScreen) view(m *Model) []string {
 // columns in proportion to what they asked for, so a narrow terminal squeezes
 // the list rather than only the detail.
 func (s *listScreen) split(m *Model, results []library.Entry, sel, width int) (int, int) {
-	detailBasis := ansi.StringWidth("nothing selected") + 4
+	// The empty-state panels wrap to whatever they are handed, so they ask for
+	// a comfortable reading measure rather than a measured one.
+	detailBasis := 44
 	if len(results) > 0 {
 		widest := 0
 		for _, line := range s.detailContent(m, results[sel], 0) {
@@ -169,7 +223,7 @@ func (s *listScreen) split(m *Model, results []library.Entry, sel, width int) (i
 				widest = n
 			}
 		}
-		detailBasis = widest + 4
+		detailBasis = widest + 3 // the joined panel spends one column less
 	}
 
 	total := listPanelWidth + detailBasis
@@ -186,43 +240,23 @@ func (s *listScreen) split(m *Model, results []library.Entry, sel, width int) (i
 
 func (s *listScreen) pane(m *Model, results []library.Entry, sel, listWidth, detailWidth, height int) []string {
 	height = max(0, height)
-	// The window is sized from the terminal, the panel from the layout; where
-	// they disagree the panel clips, exactly as the flexbox build does.
-	chrome := 7
-	if m.showBanner() {
-		chrome += bannerRowCount
-	}
-	visible := max(2, m.height-chrome)
-	start := 0
-	if len(results) > visible {
-		start = max(0, min(sel-visible+1, len(results)-visible))
-	}
-	end := min(len(results), start+visible)
-
-	var listContent []string
-	if len(results) == 0 {
-		listContent = append(listContent, dimStyle.Render("no matches"))
-	}
 	query := s.input.Value()
-	for i := start; i < end; i++ {
-		entry := results[i]
-		pointer := "  "
-		if i == sel {
-			pointer = "❯ "
-		}
-		listContent = append(listContent, accentStyle.Render(pointer)+
-			highlightName(query, entry.Name, i == sel)+badge(entry.Command))
-	}
-	listPanel := panel("commands", boldStyle, frameStyle, listWidth, listContent, height)
+
+	listPanel := panelWith(boxSeam, "commands", titleStyle(), frameStyle, listWidth,
+		s.listRows(m, results, sel, max(1, height-2), listWidth-4, query), height)
 
 	var detailPanel []string
-	if len(results) > 0 {
+	switch {
+	case len(results) > 0:
 		entry := results[sel]
-		detailPanel = panel(entry.Name, boldStyle, frameStyle, detailWidth,
-			s.detailContent(m, entry, detailWidth-4), height)
-	} else {
-		detailPanel = panel("", boldStyle, frameStyle, detailWidth,
-			[]string{dimStyle.Render("nothing selected")}, height)
+		detailPanel = panelWith(boxJoined, entry.Name, titleStyle(), frameStyle, detailWidth,
+			s.detailContent(m, entry, detailWidth-3), height)
+	case len(m.lib.Commands) == 0:
+		detailPanel = panelWith(boxJoined, "getting started", titleStyle(), frameStyle, detailWidth,
+			gettingStarted(detailWidth-3), height)
+	default:
+		detailPanel = panelWith(boxJoined, "no match", titleStyle(), frameStyle, detailWidth,
+			noMatch(query, detailWidth-3), height)
 	}
 
 	out := make([]string, 0, height)
@@ -230,6 +264,111 @@ func (s *listScreen) pane(m *Model, results []library.Entry, sel, listWidth, det
 		out = append(out, listPanel[i]+detailPanel[i])
 	}
 	return out
+}
+
+// listRows renders the visible slice of the results. When they overflow the
+// panel the first and last rows are given over to the counts still hidden —
+// reserved at both ends whether or not both ends have anything to report, so
+// the rows between them hold still as the selection moves.
+func (s *listScreen) listRows(m *Model, results []library.Entry, sel, rows, inner int, query string) []string {
+	if len(results) == 0 {
+		if len(m.lib.Commands) == 0 {
+			return []string{dimStyle.Render("no commands yet")}
+		}
+		return []string{dimStyle.Render("no matches")}
+	}
+	if len(results) <= rows {
+		out := make([]string, 0, len(results))
+		for i, entry := range results {
+			out = append(out, s.rowFor(entry, i == sel, inner, query))
+		}
+		return out
+	}
+
+	window := max(1, rows-2)
+	start := max(0, min(sel-window+1, len(results)-window))
+	end := min(len(results), start+window)
+
+	out := make([]string, 0, rows)
+	out = append(out, overflowRow("↑", start))
+	for i := start; i < end; i++ {
+		out = append(out, s.rowFor(results[i], i == sel, inner, query))
+	}
+	return append(out, overflowRow("↓", len(results)-end))
+}
+
+func overflowRow(arrow string, n int) string {
+	if n == 0 {
+		return ""
+	}
+	return dimStyle.Render(fmt.Sprintf("  %s %d more", arrow, n))
+}
+
+// rowFor renders a Command's row, or the delete confirm in its place when
+// that Command is the one awaiting an answer. The confirm takes over the row
+// rather than the screen, so the detail panel beside it goes on showing the
+// command you are about to lose.
+func (s *listScreen) rowFor(entry library.Entry, selected bool, inner int, query string) string {
+	if entry.ID != s.confirming {
+		return listRow(entry, selected, inner, query)
+	}
+	label := "⚠ delete? y/n"
+	pad := max(0, inner-ansi.StringWidth(label))
+	fill := dangerStyle.Bold(true).Background(lipgloss.Color(surfaceColor))
+	return fill.Render(label + strings.Repeat(" ", pad))
+}
+
+// listRow renders one command: the selection pointer, the name with its
+// fuzzy-match hits picked out, and the arg badge pushed to the right edge so
+// the badges line up down the panel. The selected row is filled across the
+// full width, which reads as a bar — where the inverse video it replaced
+// turned the whole row into a bright block.
+func listRow(entry library.Entry, selected bool, inner int, query string) string {
+	pointer := "  "
+	if selected {
+		pointer = "❯ "
+	}
+	badge := argBadge(entry.Command, selected)
+	nameWidth := max(0, inner-ansi.StringWidth(pointer)-ansi.StringWidth(badge))
+	name := ansi.Truncate(entry.Name, nameWidth, "…")
+	gap := max(0, nameWidth-ansi.StringWidth(name))
+
+	return onSelected(accentStyle, selected).Render(pointer) +
+		highlightName(query, name, selected) +
+		onSelected(lipglossPlain, selected).Render(strings.Repeat(" ", gap)) +
+		badge
+}
+
+// gettingStarted is the detail panel for an empty Library — the first thing a
+// new user sees, so it says what potato is for and which keys to press rather
+// than reporting that there is nothing to show.
+func gettingStarted(inner int) []string {
+	out := dimLines("Potato keeps the long commands you can never remember, and hands them back to your shell.", inner)
+	for _, k := range []footerKey{
+		{"^A", "add your first command"},
+		{"↵ ", "hand it to your shell"},
+		{"^Y", "copy it instead"},
+	} {
+		out = append(out, accentStyle.Bold(true).Render(k.chord)+dimStyle.Render("  "+k.label))
+	}
+	out = append(out, "")
+	return append(out, dimLines("Write {{name}} or {{name=default}} in a command and potato asks for the value before handing it over.", inner)...)
+}
+
+// noMatch is the detail panel when the query filters everything out.
+func noMatch(query string, inner int) []string {
+	out := dimLines(fmt.Sprintf("Nothing in your library matches '%s'.", query), inner)
+	return append(out, accentStyle.Bold(true).Render("^A")+dimStyle.Render("  add it as a new command"))
+}
+
+// dimLines wraps text to the panel and dims every row of it, closing with the
+// blank row that separates it from whatever follows.
+func dimLines(text string, inner int) []string {
+	var out []string
+	for _, line := range wrapOrNot(text, inner) {
+		out = append(out, dimStyle.Render(line))
+	}
+	return append(out, "")
 }
 
 // detailContent builds the detail panel's rows. inner is the wrap width; 0
@@ -246,7 +385,7 @@ func (s *listScreen) detailContent(m *Model, entry library.Entry, inner int) []s
 	content = append(content, commandBlock(entry.Command, inner)...)
 	if ps := placeholders.Parse(entry.Command); len(ps) > 0 {
 		content = append(content, "", dimStyle.Render("args:"))
-		content = append(content, placeholderRows(ps)...)
+		content = append(content, placeholderRows(ps, true)...)
 	}
 	if used := m.st[entry.ID].LastUsedAt; used != "" {
 		if ago := timeAgo(used, m.deps.Now()); ago != "" {
@@ -263,18 +402,24 @@ func commandBlock(command string, inner int) []string {
 	var out []string
 	for i, line := range wrapOrNot("$ "+command, inner) {
 		if i == 0 {
-			out = append(out, dimStyle.Render("$ ")+cyanStyle.Render(strings.TrimPrefix(line, "$ ")))
+			out = append(out, dimStyle.Render("$ ")+textStyle.Render(strings.TrimPrefix(line, "$ ")))
 			continue
 		}
-		out = append(out, cyanStyle.Render(line))
+		out = append(out, textStyle.Render(line))
 	}
 	return out
 }
 
-func placeholderRows(ps []placeholders.Placeholder) []string {
+// placeholderRows lists a Command's Placeholders, one row each. The detail
+// panel indents them under its `args:` label; the edit screen's own panel has
+// a frame that says the same thing, so it takes them flush.
+func placeholderRows(ps []placeholders.Placeholder, indent bool) []string {
 	out := make([]string, 0, len(ps))
 	for _, p := range ps {
-		row := "  " + yellowStyle.Render(p.Name)
+		row := highlightStyle.Render(p.Name)
+		if indent {
+			row = "  " + row
+		}
 		if p.HasDefault {
 			row += dimStyle.Render(" = " + p.Default)
 		}
@@ -283,32 +428,32 @@ func placeholderRows(ps []placeholders.Placeholder) []string {
 	return out
 }
 
-func badge(command string) string {
+func argBadge(command string, selected bool) string {
 	n := len(placeholders.Parse(command))
 	if n == 0 {
 		return ""
 	}
-	return dimStyle.Foreground(lipgloss.Color("6")).Render(fmt.Sprintf(" ⌁%d", n))
+	return onSelected(accentStyle, selected).Render(fmt.Sprintf(" ⌁%d", n))
 }
 
-// highlightName paints the subsequence match positions yellow inside the
-// (optionally inverted) selected row.
+// highlightName paints the subsequence match positions in the brand's
+// brightest gold, carrying the selection fill through both runs.
 func highlightName(query, name string, selected bool) string {
-	base := boldStyle
-	if selected {
-		base = base.Reverse(true)
-	}
+	plain := onSelected(boldStyle.Foreground(lipgloss.Color(textColor)), selected)
+	hit := onSelected(boldStyle.Foreground(lipgloss.Color(highlightColor)), selected)
 	matches, ok := search.NameMatchIndices(query, name)
 	if !ok {
-		return base.Render(name)
+		return plain.Render(name)
 	}
 	var b strings.Builder
 	for i, r := range []rune(name) {
-		if matches[i] {
-			b.WriteString(base.Foreground(lipgloss.Color("3")).Render(string(r)))
+		// the name may have been truncated to fit the panel, so a match index
+		// past its end simply has nothing left to paint
+		if i < len(matches) && matches[i] {
+			b.WriteString(hit.Render(string(r)))
 			continue
 		}
-		b.WriteString(base.Render(string(r)))
+		b.WriteString(plain.Render(string(r)))
 	}
 	return b.String()
 }
