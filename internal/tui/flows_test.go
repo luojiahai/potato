@@ -179,7 +179,7 @@ func TestDeleteConfirmsInlineWithoutLeavingTheList(t *testing.T) {
 		t.Fatalf("^D left the list for %T", m.screen)
 	}
 	frame := render(t, m)
-	if !strings.Contains(frame, "⚠ delete? y/n") {
+	if !strings.Contains(frame, "⚠ delete 'deploy prod'? y/n") {
 		t.Errorf("no inline confirm:\n%s", frame)
 	}
 	if !strings.Contains(frame, "ssh {{host=prod-1}} 'deploy.sh'") {
@@ -199,7 +199,7 @@ func TestDeleteConfirmTreatsAnyOtherKeyAsCancel(t *testing.T) {
 		if len(rec.libraries) != 0 {
 			t.Errorf("%q deleted the Command", key)
 		}
-		if strings.Contains(render(t, m), "⚠ delete? y/n") {
+		if strings.Contains(render(t, m), "⚠ delete 'deploy prod'? y/n") {
 			t.Errorf("%q left the confirm open", key)
 		}
 	}

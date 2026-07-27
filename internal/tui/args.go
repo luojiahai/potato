@@ -116,11 +116,14 @@ func (s *argsScreen) labelWidth() int {
 
 // row renders one arg: its name in the shared gutter, the value with the caret
 // when focused, and the hint right-aligned. The focused row is filled across
-// the panel — the same bar the list screen marks its selection with, rather
-// than a second focus language for the same idea.
-func (s *argsScreen) row(i, inner int) string {
+// the full width — the same bar the list screen marks its selection with,
+// rather than a second focus language for the same idea — so the row carries
+// its own content indent instead of being indented from outside, where the
+// leading spaces would fall outside the fill and break the bar.
+func (s *argsScreen) row(i, width int) string {
 	p := s.ps[i]
 	focused := i == s.focus
+	inner := max(1, width-2)
 
 	hint := ""
 	if _, ok := s.lastArgs[p.Name]; ok {
@@ -143,15 +146,16 @@ func (s *argsScreen) row(i, inner int) string {
 	valueWidth = max(1, valueWidth-hintWidth)
 
 	value, caret := windowValue(s.inputs[i].Value(), s.inputs[i].Position(), valueWidth, focused)
-	rendered := wrapStyledHard([]run{{text: value, style: onSelected(textStyle, focused)}}, valueWidth, caret)[0]
+	rows, _ := wrapStyledHard([]run{{text: value, style: onSelected(textStyle, focused)}}, valueWidth, caret)
+	rendered := rows[0]
 	// Measured on the rendered run, not the value: a caret parked past the
 	// last character occupies a cell of its own, and charging the gap for the
-	// value alone would push the row one column past the panel.
+	// value alone would push the row one column past the edge.
 	gap := max(0, valueWidth-ansi.StringWidth(rendered))
 
 	fill := onSelected(lipglossPlain, focused)
-	out := onSelected(dimStyle, focused).Render(label) + fill.Render(strings.Repeat(" ", labelPad)) +
-		rendered + fill.Render(strings.Repeat(" ", gap))
+	out := fill.Render(contentIndent) + onSelected(dimStyle, focused).Render(label) +
+		fill.Render(strings.Repeat(" ", labelPad)) + rendered + fill.Render(strings.Repeat(" ", gap))
 	if hint != "" {
 		out += onSelected(dimStyle, focused).Render("  " + hint)
 	}
@@ -181,11 +185,10 @@ func windowValue(value string, pos, width int, focused bool) (string, int) {
 
 func (s *argsScreen) view(m *Model) []string {
 	width := m.innerWidth()
-	inner := width - 4
 
-	rows := make([]string, 0, len(s.ps))
+	top := []string{rule(width, "arguments · "+s.name, sectionStyle(), "")}
 	for i := range s.ps {
-		rows = append(rows, s.row(i, inner))
+		top = append(top, s.row(i, width))
 	}
 
 	// The filled-in values are the only part of the preview the user just
@@ -198,17 +201,11 @@ func (s *argsScreen) view(m *Model) []string {
 		}
 		preview = append(preview, run{text: seg.Text, style: style})
 	}
-	previewLines := wrapStyled(preview, inner)
 
-	// The arg rows take what they need; `will run` absorbs the rest, the same
-	// way the command field does on the edit screen.
-	budget := m.bodyHeight() - 4 - len(rows)
-	lines := panel("arguments · "+s.name, titleStyle(), frameStyle, width, rows, len(rows)+2)
-	lines = append(lines, panel("will run", titleStyle(), frameStyle, width,
-		previewLines, max(len(previewLines), budget)+2)...)
-
-	for len(lines) < m.bodyHeight() {
-		lines = append(lines, "")
-	}
-	return lines
+	// `will run` sits directly under the arg rows it is the result of, rather
+	// than absorbing the free height the way the old panel did — a sixteen-row
+	// box around a one-line command.
+	top = append(top, "")
+	top = append(top, section(width, "will run", sectionStyle(), "", wrapStyled(preview, width-2))...)
+	return pin(top, nil, m.bodyHeight())
 }

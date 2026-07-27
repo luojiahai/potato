@@ -1,14 +1,11 @@
  ─ name ───────────────────────────────────────────────────────────────────────
-   backup
+   rsync everything
 
  ─ description ─────────────────────────────────────────────────────── optional
 
 
  ─ command ────────────────────────────────────────────────────────────────────
-   tar -czf {{out=x.tgz}} .
-
- ─ placeholders ───────────────────────────────────────────────────────────────
-   out = x.tgz
-
+   rsync -avz --delete --exclude '.git' --exclude 'node_modules' --exclude '*.l
+   og' --partial --progress -e 'ssh -p {{port=22}}' ./{{src=dist}}/ {{user=depl
  ──────────────────────────────────────────────────────────────────────────────
  ↵ save · tab next field · esc cancel

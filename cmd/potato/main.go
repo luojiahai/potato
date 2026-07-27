@@ -37,7 +37,9 @@ usage:
   potato uninstall [--purge]   remove potato (keep data; --purge wipes it)
   potato init <zsh|bash|sh>    print shell integration (used by the installer)
   potato --version             print the version
-`, version.Version)
+
+https://github.com/%s
+`, version.Version, update.Repo)
 }
 
 func die(message string) {

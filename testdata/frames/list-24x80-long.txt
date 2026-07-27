@@ -1,13 +1,16 @@
  ─ potato ───────────────────────────────────────────────────────────────── dev
- ⌕                                                        15/15 · recently used
+ ⌕                                                          1/1 · recently used
  ──────────────────────────────────────────────────────────────────────────────
-   ↑ 6 more
-   command number 6   echo 6
-   command number 7   echo 7
- ❯ command number 8   echo 8
-   ↓ 6 more
+ ❯ rsync everything  rsync -avz --delete --exclude '.git' --exclude 'node_…  ⌁5
 
- ─ command number 8 ───────────────────────────────────────────────────────────
-   $ echo 8
+ ─ rsync everything ───────────────────────────────────────────────────────────
+   $ rsync -avz --delete --exclude '.git' --exclude 'node_modules' --exclude
+   '*.log' --partial --progress -e 'ssh -p {{port=22}}' ./{{src=dist}}/
+   {{user=deploy}}@{{host}}:/srv/{{app}}/releases/
+     port = 22
+     src = dist
+     user = deploy
+     host
+     app
  ──────────────────────────────────────────────────────────────────────────────
  ↵ run · ^Y copy · ^A add · ^E edit · ^D delete · esc quit

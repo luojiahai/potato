@@ -1,13 +1,22 @@
  ─ potato ───────────────────────────────────────────────────────────────── dev
  ⌕                                                        15/15 · recently used
  ──────────────────────────────────────────────────────────────────────────────
-   ↑ 6 more
+
+ ❯ command number 0   echo 0
+   command number 1   echo 1
+   command number 2   echo 2
+   command number 3   echo 3
+   command number 4   echo 4
+   command number 5   echo 5
    command number 6   echo 6
    command number 7   echo 7
- ❯ command number 8   echo 8
-   ↓ 6 more
+   command number 8   echo 8
+   command number 9   echo 9
+   command number 10  echo 10
+   command number 11  echo 11
+   ↓ 3 more
 
- ─ command number 8 ───────────────────────────────────────────────────────────
-   $ echo 8
+ ─ command number 0 ───────────────────────────────────────────────────────────
+   $ echo 0
  ──────────────────────────────────────────────────────────────────────────────
  ↵ run · ^Y copy · ^A add · ^E edit · ^D delete · esc quit

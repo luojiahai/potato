@@ -43,7 +43,7 @@ func TestViewCarriesTheBrandColours(t *testing.T) {
 		t.Fatal("no SGR sequences in the frame")
 	}
 	for label, colour := range map[string]string{
-		"frame":     frameColor,
+		"rule":      ruleColor,
 		"accent":    accentColor,
 		"text":      textColor,
 		"muted":     mutedColor,
@@ -91,14 +91,4 @@ func truecolorFg(hex string) string {
 	var r, g, b int
 	fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
 	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", r, g, b)
-}
-
-// The version line is an OSC 8 hyperlink; the layout only survives because the
-// width measurement ignores the escape sequence.
-func TestBannerCarriesAnOSC8Hyperlink(t *testing.T) {
-	m := New(fixtureDeps())
-	m.SetSize(80, 24)
-	if !strings.Contains(m.View().Content, "\x1b]8;;https://github.com/luojiahai/potato\a") {
-		t.Error("the repo link is not an OSC 8 hyperlink")
-	}
 }

@@ -1,24 +1,15 @@
-  potato  dev  ·  github.com/luojiahai/potato
- ╭────────────────────────────────────────────────────────────────────────────╮
- │ /                                               (recently used first)  0/0 │
- ╰────────────────────────────────────────────────────────────────────────────╯
- ╭─ commands ─────────────────┬─ getting started ─────────────────────────────╮
- │ no commands yet            │ Potato keeps the long commands you can never  │
- │                            │ remember, and hands them back to your shell.  │
- │                            │                                               │
- │                            │ ^A  add your first command                    │
- │                            │ ↵   hand it to your shell                     │
- │                            │ ^Y  copy it instead                           │
- │                            │                                               │
- │                            │ Write {{name}} or {{name=default}} in a       │
- │                            │ command and potato asks for the value before  │
- │                            │ handing it over.                              │
- │                            │                                               │
- │                            │                                               │
- │                            │                                               │
- │                            │                                               │
- │                            │                                               │
- │                            │                                               │
- ╰────────────────────────────┴───────────────────────────────────────────────╯
+ ─ potato ───────────────────────────────────────────────────────────────── dev
+ ⌕                                                          0/0 · recently used
+ ──────────────────────────────────────────────────────────────────────────────
+   Potato keeps the long commands you can never remember, and hands them back
+   to your shell.
 
-  ↵ run · ^Y copy · ^A add · ^E edit · ^D delete · esc quit
+   ^A  add your first command
+   ↵   hand it to your shell
+   ^Y  copy it instead
+
+   Write {{name}} or {{name=default}} in a command and potato asks for the
+   value before handing it over.
+
+ ──────────────────────────────────────────────────────────────────────────────
+ ↵ run · ^Y copy · ^A add · ^E edit · ^D delete · esc quit

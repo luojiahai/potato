@@ -1,5 +1,10 @@
-// The add / edit screen: one titled panel per field, with the command field
-// absorbing whatever height the others leave.
+// The add / edit screen: one ruled section per field, each sized to what it
+// holds, stacked from the top.
+//
+// The sections no longer share out a fixed height between them. Every one is as
+// tall as its own content, so the command field grows downward as you type and
+// pushes `placeholders` along with it, and the slack collects above the footer
+// where nothing frames it.
 
 package tui
 
@@ -9,6 +14,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 	"github.com/luojiahai/potato/internal/library"
@@ -33,7 +39,6 @@ var editLabels = [fieldCount]string{
 
 type editScreen struct {
 	id     string // "" = a new Command
-	title  string
 	inputs []textinput.Model
 	focus  int
 	// tried records a save that was refused. Until then the form stays quiet
@@ -43,11 +48,10 @@ type editScreen struct {
 }
 
 func newEditScreen(m *Model, entry *library.Entry) *editScreen {
-	s := &editScreen{title: "new command"}
+	s := &editScreen{}
 	var values [fieldCount]string
 	if entry != nil {
 		s.id = entry.ID
-		s.title = fmt.Sprintf("edit '%s'", entry.Name)
 		values[fieldName] = entry.Name
 		values[fieldCommand] = entry.Command
 		if entry.Description != nil {
@@ -172,24 +176,25 @@ func (s *editScreen) keys(*Model) []footerKey {
 	return []footerKey{{"↵", "save"}, {"tab", "next field"}, {"esc", "cancel"}}
 }
 
-// rows renders one field's value, wrapped to the panel and carrying the caret
-// when focused. Only the command field highlights placeholders — it is the
-// only field where `{{name}}` means anything.
-func (s *editScreen) rows(i, inner int) []string {
+// rows renders one field's value, wrapped to the width and carrying the caret
+// when focused, and reports which row the caret landed on. Only the command
+// field highlights placeholders — it is the only field where `{{name}}` means
+// anything.
+func (s *editScreen) rows(i, inner int) ([]string, int) {
 	value := s.value(i)
 	focused := i == s.focus
 
 	if i != fieldCommand {
-		return valueRows([]run{{text: value, style: textStyle}}, value, s.inputs[i].Position(), inner, focused)
+		return valueRowsAt([]run{{text: value, style: textStyle}}, value, s.inputs[i].Position(), inner, focused)
 	}
 	if value == "" {
-		// The hint lives on the caret row rather than in a panel of its own,
+		// The hint lives on the caret row rather than in a section of its own,
 		// so it costs no row and vanishes on the first keystroke.
 		hint := dimStyle.Render("type a command — {{name}} or {{name=default}} become args")
 		if !focused {
-			return []string{ansi.Truncate(hint, inner, "")}
+			return []string{ansi.Truncate(hint, inner, "")}, 0
 		}
-		return []string{ansi.Truncate(caretStyle.Render(" ")+hint, inner, "")}
+		return []string{ansi.Truncate(caretStyle.Render(" ")+hint, inner, "")}, 0
 	}
 	var runs []run
 	for _, seg := range placeholders.TemplateSegments(value) {
@@ -199,12 +204,20 @@ func (s *editScreen) rows(i, inner int) []string {
 		}
 		runs = append(runs, run{text: seg.Text, style: style})
 	}
-	return valueRows(runs, value, s.inputs[fieldCommand].Position(), inner, focused)
+	return valueRowsAt(runs, value, s.inputs[fieldCommand].Position(), inner, focused)
+}
+
+// label heads a field's section, in accent when the field has the keyboard.
+func (s *editScreen) label(i int) lipgloss.Style {
+	if i == s.focus {
+		return focusStyle()
+	}
+	return sectionStyle()
 }
 
 func (s *editScreen) view(m *Model) []string {
 	width := m.innerWidth()
-	inner := width - 4
+	inner := width - 2
 
 	// A name collision is worth saying the moment it is typed — it is the one
 	// problem the user cannot see coming. The rest wait for a refused save.
@@ -214,45 +227,54 @@ func (s *editScreen) view(m *Model) []string {
 	} else if s.tried {
 		warning = s.problem(m)
 	}
-
-	ps := placeholders.Parse(s.value(fieldCommand))
-	nameRows := s.rows(fieldName, inner)
-	descRows := s.rows(fieldDescription, inner)
-	cmdRows := s.rows(fieldCommand, inner)
-
-	// One top-to-bottom pass. name and description take what they need, the
-	// placeholder list takes what it needs from the remainder, and command —
-	// the only field that grows — absorbs everything still unspent.
-	budget := m.bodyHeight() - 6 // three field panels' borders
-	if len(ps) > 0 {
-		budget -= 2
-	}
+	var bottom []string
 	if warning != "" {
-		budget-- // the warning row sits under the panels
-	}
-	budget -= len(nameRows) + len(descRows)
-
-	phRows := 0
-	if len(ps) > 0 {
-		phRows = max(1, min(len(ps), budget-1))
-		budget -= phRows
+		bottom = []string{dangerStyle.Render("⚠ " + warning)}
 	}
 
-	lines := fieldPanel(editLabels[fieldName], "", nameRows, s.focus == fieldName, width, len(nameRows)+2)
-	lines = append(lines, fieldPanel(editLabels[fieldDescription], "(optional)", descRows,
-		s.focus == fieldDescription, width, len(descRows)+2)...)
-	lines = append(lines, fieldPanel(editLabels[fieldCommand], "", cmdRows,
-		s.focus == fieldCommand, width, max(len(cmdRows), budget)+2)...)
-	if len(ps) > 0 {
-		lines = append(lines, panel("placeholders", titleStyle(), frameStyle, width,
-			placeholderRows(ps, false), phRows+2)...)
-	}
-	if warning != "" {
-		lines = append(lines, " "+dangerStyle.Render("⚠ "+warning))
+	nameRows, _ := s.rows(fieldName, inner)
+	descRows, _ := s.rows(fieldDescription, inner)
+	cmdRows, caretRow := s.rows(fieldCommand, inner)
+
+	nameSec := section(width, editLabels[fieldName], s.label(fieldName), "", nameRows)
+	descSec := section(width, editLabels[fieldDescription], s.label(fieldDescription), "optional", descRows)
+	var phSec []string
+	if ps := placeholders.Parse(s.value(fieldCommand)); len(ps) > 0 {
+		phSec = section(width, "placeholders", sectionStyle(), "", placeholderRows(ps, inner, false))
 	}
 
-	for len(lines) < m.bodyHeight() {
-		lines = append(lines, "")
+	// Everything but the command is as tall as its own content; the command
+	// takes what is left and scrolls around the caret, so typing past the
+	// bottom of the screen moves the view rather than the caret out of sight.
+	//
+	// On a screen too short for all of it, the placeholder list is what gives.
+	// It is derived from the command — which already picks the same names out
+	// in gold — so losing it costs less than losing the field being typed in,
+	// and a section rule with its rows cut off under it reads as a fault.
+	spent := len(nameSec) + 1 + len(descSec) + 1 + 1 + len(bottom) // the blanks between sections, and command's own rule
+	avail := m.bodyHeight() - spent
+	if len(phSec) > 0 {
+		height := min(len(phSec), max(0, avail-min(len(cmdRows), 3)-1))
+		if height < 2 {
+			// a rule with nothing under it is not a section
+			phSec = nil
+		} else {
+			if height < len(phSec) {
+				phSec = append(phSec[:height-1:height-1], contentIndent+dimStyle.Render("…"))
+			}
+			avail -= height + 1
+		}
 	}
-	return lines
+	cmdRows = window(cmdRows, caretRow, max(1, avail))
+
+	top := append([]string{}, nameSec...)
+	top = append(top, "")
+	top = append(top, descSec...)
+	top = append(top, "")
+	top = append(top, section(width, editLabels[fieldCommand], s.label(fieldCommand), "", cmdRows)...)
+	if len(phSec) > 0 {
+		top = append(top, "")
+		top = append(top, phSec...)
+	}
+	return pin(top, bottom, m.bodyHeight())
 }

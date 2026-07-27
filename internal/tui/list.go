@@ -1,5 +1,11 @@
-// The list screen: a split pane with fuzzy search on the left and the
-// selected Command's detail on the right.
+// The list screen: a full-width fuzzy-search list, with the selected Command's
+// detail in a strip under it.
+//
+// The list used to be thirty columns of names beside a detail pane, which gave
+// a Command's text under half the terminal — on a tool whose whole premise is
+// commands too long to remember. Full width lets the row carry a dim preview of
+// the command itself, so the list can be scanned without walking the selection
+// down it, and lets the detail strip show the command unwrapped.
 
 package tui
 
@@ -17,14 +23,12 @@ import (
 	"github.com/luojiahai/potato/internal/search"
 )
 
-const listPanelWidth = 30
-
 type listScreen struct {
 	input textinput.Model
 	sel   int
 	// confirming holds the id of the Command awaiting a delete confirmation,
 	// or "". The confirm is inline rather than a screen of its own so the
-	// detail panel keeps showing what is about to be deleted while you answer.
+	// detail strip keeps showing what is about to be deleted while you answer.
 	confirming string
 }
 
@@ -99,7 +103,7 @@ func (s *listScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 
 	switch keyMsg.String() {
 	case "esc":
-		return tea.Quit
+		return m.quit()
 	case "ctrl+a":
 		m.screen = newEditScreen(m, nil)
 		return nil
@@ -180,119 +184,222 @@ func (s *listScreen) keys(*Model) []footerKey {
 }
 
 func (s *listScreen) view(m *Model) []string {
+	return pin(s.content(m), nil, m.bodyHeight())
+}
+
+// content is the list screen's rows before they are padded out to the frame's
+// height. Model.measure sizes the frame from this, so it has to be the rows the
+// screen actually wants rather than the rows it ends up drawing.
+func (s *listScreen) content(m *Model) []string {
 	width := m.innerWidth()
+	body := m.bodyHeight()
 	query := s.input.Value()
 	results := s.results(m)
 	sel := min(s.sel, max(0, len(results)-1))
 
-	// search panel
-	right := fmt.Sprintf("%d/%d", len(results), len(m.lib.Commands))
-	if query == "" {
-		right = "(recently used first)  " + right
+	// The brand rides the frame's top rule the way every section label rides
+	// its own, and the version rides the right end — one row for what the
+	// seven-row wordmark and its strapline used to spend eight on. It gives the
+	// frame a top edge to answer the footer's bottom one.
+	top := []string{
+		rule(width, "potato", brandStyle(), versionLabel()),
+		s.searchRow(m, results, width),
+		rule(width, "", lipglossPlain, ""),
 	}
-	title := ""
-	if m.bannerHeight() == 0 {
-		title = "potato"
-	}
-	left := accentStyle.Bold(true).Render("/ ") + s.input.View()
-	gap := max(0, (width-4)-ansi.StringWidth(left)-ansi.StringWidth(right))
-	lines := panel(title, boldStyle.Foreground(lipgloss.Color(accentColor)), frameStyle, width,
-		[]string{left + strings.Repeat(" ", gap) + dimStyle.Render(right)}, 3)
 
-	// the split pane fills what is left between the search panel and the footer
-	middleHeight := max(0, m.bodyHeight()-3)
-	listWidth, detailWidth := s.split(m, results, sel, width)
-
-	lines = append(lines, s.pane(m, results, sel, listWidth, detailWidth, middleHeight)...)
-	return lines
-}
-
-// split divides the pane between the fixed-width command list and the detail
-// panel. The list asks for 30 columns and the detail for whatever its widest
-// unwrapped line needs; when the two together exceed the space, both give up
-// columns in proportion to what they asked for, so a narrow terminal squeezes
-// the list rather than only the detail.
-func (s *listScreen) split(m *Model, results []library.Entry, sel, width int) (int, int) {
-	// The empty-state panels wrap to whatever they are handed, so they ask for
-	// a comfortable reading measure rather than a measured one.
-	detailBasis := 44
-	if len(results) > 0 {
-		widest := 0
-		for _, line := range s.detailContent(m, results[sel], 0) {
-			if n := ansi.StringWidth(line); n > widest {
-				widest = n
-			}
+	if len(results) == 0 {
+		var rows []string
+		if len(m.lib.Commands) == 0 {
+			rows = gettingStarted(width - 2)
+		} else {
+			rows = noMatch(query, width-2)
 		}
-		detailBasis = widest + 3 // the joined panel spends one column less
+		return append(top, indent(rows)...)
 	}
 
-	total := listPanelWidth + detailBasis
-	if total <= width {
-		listWidth := min(listPanelWidth, width)
-		return listWidth, width - listWidth
-	}
-	overflow := total - width
-	shrunk := float64(listPanelWidth) - float64(overflow)*float64(listPanelWidth)/float64(total)
-	listWidth := int(shrunk + 0.5)
-	listWidth = max(1, min(listWidth, width))
-	return listWidth, width - listWidth
+	// The detail strip follows the list rather than pinning to the bottom of
+	// the screen. Pinned, a three-command library put it thirteen rows below
+	// the row it described — the strip read as an unrelated status bar instead
+	// of as the selection's own detail. Following the list, it only ever moves
+	// when the result count does, which is to say while you are typing a query
+	// and looking at the search row anyway; it never moves under an arrow key.
+	detail := s.detail(m, results, sel, width)
+	rows := s.listRows(m, results, sel, max(0, body-len(top)-len(detail)), width, query)
+	return append(append(top, rows...), detail...)
 }
 
-func (s *listScreen) pane(m *Model, results []library.Entry, sel, listWidth, detailWidth, height int) []string {
-	height = max(0, height)
-	query := s.input.Value()
+// searchRow is the prompt and the result count on one row — where the search
+// field used to cost three, two of them border. The count yields to the query
+// as the row narrows: what you are typing outranks how much it found, and the
+// sort order outranks neither.
+func (s *listScreen) searchRow(m *Model, results []library.Entry, width int) string {
+	left := accentStyle.Bold(true).Render("⌕ ") + s.input.View()
+	counts := fmt.Sprintf("%d/%d", len(results), len(m.lib.Commands))
+	for _, right := range []string{counts + " · recently used", counts, ""} {
+		if s.input.Value() != "" && strings.HasSuffix(right, "recently used") {
+			continue
+		}
+		gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
+		if gap < 1 && right != "" {
+			continue
+		}
+		return left + strings.Repeat(" ", max(0, gap)) + dimStyle.Render(right)
+	}
+	return left
+}
 
-	listPanel := panelWith(boxSeam, "commands", titleStyle(), frameStyle, listWidth,
-		s.listRows(m, results, sel, max(1, height-2), listWidth-4, query), height)
+// ---------- the detail strip ----------
 
-	var detailPanel []string
-	switch {
-	case len(results) > 0:
-		entry := results[sel]
-		detailPanel = panelWith(boxJoined, entry.Name, titleStyle(), frameStyle, detailWidth,
-			s.detailContent(m, entry, detailWidth-3), height)
-	case len(m.lib.Commands) == 0:
-		detailPanel = panelWith(boxJoined, "getting started", titleStyle(), frameStyle, detailWidth,
-			gettingStarted(detailWidth-3), height)
-	default:
-		detailPanel = panelWith(boxJoined, "no match", titleStyle(), frameStyle, detailWidth,
-			noMatch(query, detailWidth-3), height)
+// detail renders the selected Command below the list, pinned above the footer.
+//
+// Its height is measured across every result rather than from the selected one,
+// so it does not change as the selection moves — a strip that grew and shrank
+// would move the list's bottom edge, and with it the scroll window, on every
+// press of ↓. The price is blank rows under a short Command in a library that
+// holds a long one, and blank rows above the footer cost nothing: they are not
+// fenced in a box, so they read as space rather than as something missing.
+func (s *listScreen) detail(m *Model, results []library.Entry, sel, width int) []string {
+	// Everything here is measured against the terminal's ceiling rather than
+	// the frame's height, because the frame's height is measured from this.
+	// Reading bodyHeight would size the strip from a number that is only
+	// settled once the strip has been sized.
+	ceiling := m.ceiling()
+	// Below this the list is the only thing worth having.
+	if ceiling < 10 {
+		return nil
+	}
+	inner := width - 2
+
+	need := 0
+	for _, entry := range results {
+		if n := len(s.detailContent(m, entry, inner)); n > need {
+			need = n
+		}
+	}
+	// Eight rows carries a description, a command wrapped over three, and the
+	// arguments it will ask for — and never more than half the frame, so the
+	// strip cannot crowd out the list it belongs to.
+	rows := min(max(need, 1), min(detailMaxRows, max(1, ceiling/2)))
+
+	content := s.detailContent(m, results[sel], inner)
+	if len(content) > rows {
+		content = append(content[:rows-1:rows-1], dimStyle.Render("…"))
+	}
+	for len(content) < rows {
+		content = append(content, "")
+	}
+	// the blank row that keeps the strip's rule off the last list row
+	return append([]string{""}, section(width, results[sel].Name, titleStyle(), "", content)...)
+}
+
+// detailContent builds the detail strip's rows: what the Command is for, what
+// it is, and what it will ask for. When it was last used lives on the list row
+// instead, where it can be compared against its neighbours.
+func (s *listScreen) detailContent(m *Model, entry library.Entry, inner int) []string {
+	var content []string
+	if entry.Description != nil && *entry.Description != "" {
+		for _, line := range wrapLines(*entry.Description, inner) {
+			content = append(content, dimStyle.Render(line))
+		}
+	}
+	content = append(content, commandBlock(entry.Command, inner)...)
+	return append(content, placeholderRows(placeholders.Parse(entry.Command), inner, true)...)
+}
+
+// ---------- the list ----------
+
+// rowLayout is the column geometry every row of one frame shares, measured once
+// across the results so names and badges line up down the list.
+type rowLayout struct {
+	name    int
+	preview int // 0 when the terminal is too narrow to carry one
+	meta    int
+	gap     int // the columns between the preview and the meta
+}
+
+// previewFloor is the width below which a row shows its name alone. A command
+// preview narrower than this is more ellipsis than command.
+const previewFloor = 24
+
+// detailMaxRows caps the detail strip; see listScreen.detail.
+const detailMaxRows = 8
+
+func (s *listScreen) columns(m *Model, results []library.Entry, width int) rowLayout {
+	meta, longest := 0, 0
+	for _, entry := range results {
+		if _, n := rowMeta(m, entry, false); n > meta {
+			meta = n
+		}
+		if n := ansi.StringWidth(entry.Name); n > longest {
+			longest = n
+		}
+	}
+	// The meta column yields first, and whole rather than truncated: a name cut
+	// to `depl…` costs more than not knowing how long ago it was used, and half
+	// a badge says nothing at all.
+	l := rowLayout{}
+	if meta > 0 && width-2-meta-2 >= 8 {
+		l.meta, l.gap = meta, 2
 	}
 
-	out := make([]string, 0, height)
-	for i := 0; i < height; i++ {
-		out = append(out, listPanel[i]+detailPanel[i])
+	// what the pointer and the meta column leave for the name and the preview
+	free := max(1, width-2-l.meta-l.gap)
+	// A name column sized to the longest name would swing with the query; the
+	// clamp keeps it inside a band wide enough to read and narrow enough to
+	// leave the preview something.
+	l.name = min(min(max(longest, 12), 32), free)
+	if rest := free - l.name - 2; rest >= previewFloor {
+		l.preview = rest
+	} else {
+		l.name = free
 	}
-	return out
+	return l
 }
 
 // listRows renders the visible slice of the results. When they overflow the
-// panel the first and last rows are given over to the counts still hidden —
+// list the first and last rows are given over to the counts still hidden —
 // reserved at both ends whether or not both ends have anything to report, so
 // the rows between them hold still as the selection moves.
-func (s *listScreen) listRows(m *Model, results []library.Entry, sel, rows, inner int, query string) []string {
-	if len(results) == 0 {
-		if len(m.lib.Commands) == 0 {
-			return []string{dimStyle.Render("no commands yet")}
-		}
-		return []string{dimStyle.Render("no matches")}
+func (s *listScreen) listRows(m *Model, results []library.Entry, sel, rows, width int, query string) []string {
+	if rows <= 0 {
+		return nil
 	}
+	l := s.columns(m, results, width)
 	if len(results) <= rows {
 		out := make([]string, 0, len(results))
 		for i, entry := range results {
-			out = append(out, s.rowFor(entry, i == sel, inner, query))
+			out = append(out, s.rowFor(m, entry, i == sel, l, query))
 		}
 		return out
 	}
 
-	window := max(1, rows-2)
-	start := max(0, min(sel-window+1, len(results)-window))
-	end := min(len(results), start+window)
+	// Reserving both counters costs two of the rows there are to give. Below
+	// three, that is all of them but one, and the counters would be spending
+	// the budget the list rows and the detail strip under them were counted
+	// into — the strip would lose its last line to a row saying how many lines
+	// were not shown.
+	// Reserving both counters costs two of the rows there are to give. Below
+	// three, that is all of them but one, and the counters would be spending
+	// the budget the list rows and the detail strip under them were counted
+	// into — the strip would lose its last line to a row saying how many lines
+	// were not shown.
+	visible := rows
+	if rows >= 3 {
+		visible = rows - 2
+	}
+	start := max(0, min(sel-visible+1, len(results)-visible))
+	end := min(len(results), start+visible)
 
 	out := make([]string, 0, rows)
+	if rows < 3 {
+		for i := start; i < end; i++ {
+			out = append(out, s.rowFor(m, results[i], i == sel, l, query))
+		}
+		return out
+	}
 	out = append(out, overflowRow("↑", start))
 	for i := start; i < end; i++ {
-		out = append(out, s.rowFor(results[i], i == sel, inner, query))
+		out = append(out, s.rowFor(m, results[i], i == sel, l, query))
 	}
 	return append(out, overflowRow("↓", len(results)-end))
 }
@@ -306,40 +413,80 @@ func overflowRow(arrow string, n int) string {
 
 // rowFor renders a Command's row, or the delete confirm in its place when
 // that Command is the one awaiting an answer. The confirm takes over the row
-// rather than the screen, so the detail panel beside it goes on showing the
-// command you are about to lose.
-func (s *listScreen) rowFor(entry library.Entry, selected bool, inner int, query string) string {
-	if entry.ID != s.confirming {
-		return listRow(entry, selected, inner, query)
+// rather than the screen, so the detail strip below it goes on showing the
+// command you are about to lose — and now has the width to name it.
+func (s *listScreen) rowFor(m *Model, entry library.Entry, selected bool, l rowLayout, query string) string {
+	width := 2 + l.name + l.meta + l.gap
+	if l.preview > 0 {
+		width += l.preview + 2
 	}
-	label := "⚠ delete? y/n"
-	pad := max(0, inner-ansi.StringWidth(label))
-	fill := dangerStyle.Bold(true).Background(lipgloss.Color(surfaceColor))
-	return fill.Render(label + strings.Repeat(" ", pad))
-}
+	if entry.ID == s.confirming {
+		label := fmt.Sprintf("⚠ delete '%s'? y/n", entry.Name)
+		label = ansi.Truncate(label, width, "…")
+		fill := dangerStyle.Bold(true).Background(lipgloss.Color(surfaceColor))
+		return fill.Render(label + strings.Repeat(" ", max(0, width-ansi.StringWidth(label))))
+	}
 
-// listRow renders one command: the selection pointer, the name with its
-// fuzzy-match hits picked out, and the arg badge pushed to the right edge so
-// the badges line up down the panel. The selected row is filled across the
-// full width, which reads as a bar — where the inverse video it replaced
-// turned the whole row into a bright block.
-func listRow(entry library.Entry, selected bool, inner int, query string) string {
 	pointer := "  "
 	if selected {
 		pointer = "❯ "
 	}
-	badge := argBadge(entry.Command, selected)
-	nameWidth := max(0, inner-ansi.StringWidth(pointer)-ansi.StringWidth(badge))
-	name := ansi.Truncate(entry.Name, nameWidth, "…")
-	gap := max(0, nameWidth-ansi.StringWidth(name))
+	fill := onSelected(lipglossPlain, selected)
+	out := onSelected(accentStyle, selected).Render(pointer) + column(highlightName(query, entry.Name, l.name, selected), l.name, selected)
 
-	return onSelected(accentStyle, selected).Render(pointer) +
-		highlightName(query, name, selected) +
-		onSelected(lipglossPlain, selected).Render(strings.Repeat(" ", gap)) +
-		badge
+	if l.preview > 0 {
+		out += fill.Render("  ") + column(onSelected(dimStyle, selected).Render(oneLine(entry.Command, l.preview)), l.preview, selected)
+	}
+	if l.meta > 0 {
+		rendered, w := rowMeta(m, entry, selected)
+		out += fill.Render(strings.Repeat(" ", l.gap+max(0, l.meta-w))) + rendered
+	}
+	return out
 }
 
-// gettingStarted is the detail panel for an empty Library — the first thing a
+// column pads a rendered cell out to its column width, carrying the selection
+// fill through the padding so the bar has no holes in it.
+func column(rendered string, width int, selected bool) string {
+	pad := max(0, width-ansi.StringWidth(rendered))
+	return rendered + onSelected(lipglossPlain, selected).Render(strings.Repeat(" ", pad))
+}
+
+// oneLine flattens a Command to a single row of preview text. A Command may
+// hold newlines — potato stores a Continuation's backslash and newline verbatim
+// — and a row is one row.
+func oneLine(command string, width int) string {
+	flat := strings.Join(strings.Fields(strings.ReplaceAll(command, "\n", " ")), " ")
+	return ansi.Truncate(flat, width, "…")
+}
+
+// rowMeta is the right-hand end of a row: how many arguments the Command asks
+// for, and when it was last used. Returns the rendered string and its width,
+// which the layout needs before it can right-align the column.
+func rowMeta(m *Model, entry library.Entry, selected bool) (string, int) {
+	var parts []run
+	if n := len(placeholders.Parse(entry.Command)); n > 0 {
+		parts = append(parts, run{text: fmt.Sprintf("⌁%d", n), style: onSelected(accentStyle, selected)})
+	}
+	if used := m.st[entry.ID].LastUsedAt; used != "" {
+		if ago := timeAgo(used, m.deps.Now()); ago != "" {
+			if len(parts) > 0 {
+				parts = append(parts, run{text: " · ", style: onSelected(dimStyle, selected)})
+			}
+			parts = append(parts, run{text: ago, style: onSelected(dimStyle, selected)})
+		}
+	}
+	var b strings.Builder
+	width := 0
+	for _, p := range parts {
+		b.WriteString(p.style.Render(p.text))
+		width += ansi.StringWidth(p.text)
+	}
+	return b.String(), width
+}
+
+// ---------- empty states ----------
+
+// gettingStarted fills the list region for an empty Library — the first thing a
 // new user sees, so it says what potato is for and which keys to press rather
 // than reporting that there is nothing to show.
 func gettingStarted(inner int) []string {
@@ -355,65 +502,42 @@ func gettingStarted(inner int) []string {
 	return append(out, dimLines("Write {{name}} or {{name=default}} in a command and potato asks for the value before handing it over.", inner)...)
 }
 
-// noMatch is the detail panel when the query filters everything out.
+// noMatch fills the list region when the query filters everything out.
 func noMatch(query string, inner int) []string {
 	out := dimLines(fmt.Sprintf("Nothing in your library matches '%s'.", query), inner)
 	return append(out, accentStyle.Bold(true).Render("^A")+dimStyle.Render("  add it as a new command"))
 }
 
-// dimLines wraps text to the panel and dims every row of it, closing with the
-// blank row that separates it from whatever follows.
+// dimLines wraps text and dims every row of it, closing with the blank row that
+// separates it from whatever follows.
 func dimLines(text string, inner int) []string {
 	var out []string
-	for _, line := range wrapOrNot(text, inner) {
+	for _, line := range wrapLines(text, inner) {
 		out = append(out, dimStyle.Render(line))
 	}
 	return append(out, "")
 }
 
-// detailContent builds the detail panel's rows. inner is the wrap width; 0
-// leaves every row unwrapped, which is how split measures what the panel
-// would like to be.
-func (s *listScreen) detailContent(m *Model, entry library.Entry, inner int) []string {
-	var content []string
-	if entry.Description != nil && *entry.Description != "" {
-		for _, line := range wrapOrNot(*entry.Description, inner) {
-			content = append(content, dimStyle.Render(line))
-		}
-		content = append(content, "")
-	}
-	content = append(content, commandBlock(entry.Command, inner)...)
-	if ps := placeholders.Parse(entry.Command); len(ps) > 0 {
-		content = append(content, "", dimStyle.Render("args:"))
-		content = append(content, placeholderRows(ps, true)...)
-	}
-	if used := m.st[entry.ID].LastUsedAt; used != "" {
-		if ago := timeAgo(used, m.deps.Now()); ago != "" {
-			content = append(content, "", dimStyle.Render("used "+ago))
-		}
-	}
-	return content
-}
-
 // ---------- shared renderers ----------
 
-// commandBlock renders a Command with its `$ ` gutter, wrapped to width.
+// commandBlock renders a Command with its `$ ` gutter, its Placeholders picked
+// out, wrapped to width.
 func commandBlock(command string, inner int) []string {
-	var out []string
-	for i, line := range wrapOrNot("$ "+command, inner) {
-		if i == 0 {
-			out = append(out, dimStyle.Render("$ ")+textStyle.Render(strings.TrimPrefix(line, "$ ")))
-			continue
+	runs := []run{{text: "$ ", style: dimStyle}}
+	for _, seg := range placeholders.TemplateSegments(command) {
+		style := textStyle
+		if seg.Flag {
+			style = highlightStyle.Bold(true)
 		}
-		out = append(out, textStyle.Render(line))
+		runs = append(runs, run{text: seg.Text, style: style})
 	}
-	return out
+	return wrapStyled(runs, inner)
 }
 
 // placeholderRows lists a Command's Placeholders, one row each. The detail
-// panel indents them under its `args:` label; the edit screen's own panel has
-// a frame that says the same thing, so it takes them flush.
-func placeholderRows(ps []placeholders.Placeholder, indent bool) []string {
+// strip indents them under the command they belong to; the edit screen's own
+// section has a rule that says the same thing, so it takes them flush.
+func placeholderRows(ps []placeholders.Placeholder, width int, indent bool) []string {
 	out := make([]string, 0, len(ps))
 	for _, p := range ps {
 		row := highlightStyle.Render(p.Name)
@@ -423,22 +547,17 @@ func placeholderRows(ps []placeholders.Placeholder, indent bool) []string {
 		if p.HasDefault {
 			row += dimStyle.Render(" = " + p.Default)
 		}
-		out = append(out, row)
+		// A default can be arbitrarily long — it is whatever the Command's
+		// author typed between `=` and `}}`.
+		out = append(out, ansi.Truncate(row, width, "…"))
 	}
 	return out
 }
 
-func argBadge(command string, selected bool) string {
-	n := len(placeholders.Parse(command))
-	if n == 0 {
-		return ""
-	}
-	return onSelected(accentStyle, selected).Render(fmt.Sprintf(" ⌁%d", n))
-}
-
 // highlightName paints the subsequence match positions in the brand's
 // brightest gold, carrying the selection fill through both runs.
-func highlightName(query, name string, selected bool) string {
+func highlightName(query, name string, width int, selected bool) string {
+	name = ansi.Truncate(name, width, "…")
 	plain := onSelected(boldStyle.Foreground(lipgloss.Color(textColor)), selected)
 	hit := onSelected(boldStyle.Foreground(lipgloss.Color(highlightColor)), selected)
 	matches, ok := search.NameMatchIndices(query, name)
@@ -447,7 +566,7 @@ func highlightName(query, name string, selected bool) string {
 	}
 	var b strings.Builder
 	for i, r := range []rune(name) {
-		// the name may have been truncated to fit the panel, so a match index
+		// the name may have been truncated to fit the column, so a match index
 		// past its end simply has nothing left to paint
 		if i < len(matches) && matches[i] {
 			b.WriteString(hit.Render(string(r)))
