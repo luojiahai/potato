@@ -1,0 +1,24 @@
+ ╭─ potato ─────────────────────────────────────╮
+ │ / ▌               (recently used first)  3/3 │
+ ╰──────────────────────────────────────────────╯
+ ╭─ commands ────────╮╭─ deploy prod ───────────╮
+ │ ❯ deploy prod ⌁1  ││ Roll out to production  │
+ │   list ports      ││                         │
+ │   tail logs ⌁2    ││ $ ssh {{host=prod-1}}   │
+ │                   ││ 'deploy.sh'             │
+ │                   ││                         │
+ │                   ││ args:                   │
+ │                   ││   host = prod-1         │
+ │                   ││                         │
+ │                   ││ used 2h ago             │
+ │                   ││                         │
+ │                   ││                         │
+ │                   ││                         │
+ │                   ││                         │
+ │                   ││                         │
+ │                   ││                         │
+ │                   ││                         │
+ ╰───────────────────╯╰─────────────────────────╯
+
+  ↵ ru · ^Y    · ^A   · ^E    · ^D      · esc
+      copy    add    edit    delete    quit

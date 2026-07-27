@@ -24,21 +24,22 @@ Your library is one hand-editable JSON file, `~/.potato/commands.json` — copyi
 
 ## Develop
 
+Go 1.26+. The TUI is [Bubble Tea](https://github.com/charmbracelet/bubbletea).
+
 ```sh
-bun install
-bun start            # run the TUI from source
-bun test             # test suite
-bun run typecheck
+go run ./cmd/potato     # run the TUI from source
+go test ./...           # test suite
+go vet ./... && gofmt -l .
 bash scripts/build.sh 1.0.0   # compile all four release targets + SHA256SUMS
 ```
 
-`bun start` runs the bare TUI — Enter prints the selection instead of pre-filling your prompt, because the pre-fill lives in the installed shell wrapper, and a child process can't touch its parent's prompt. To test the real hand-off, paste a dev wrapper into your zsh:
+`go run ./cmd/potato` runs the bare TUI — Enter prints the selection instead of pre-filling your prompt, because the pre-fill lives in the installed shell wrapper, and a child process can't touch its parent's prompt. To test the real hand-off, paste a dev wrapper into your zsh:
 
 ```zsh
 pdev() {
   local out cmd
   out="$(mktemp)" || return 1
-  bun run src/cli.tsx --out "$out"
+  go run ./cmd/potato --out "$out"
   cmd="$(cat "$out")"; rm -f "$out"
   [ -n "$cmd" ] && print -z -- "$cmd"
 }
@@ -49,7 +50,7 @@ Or exercise the full installed pipeline (compiled binary + generated glue), isol
 ```zsh
 export POTATO_INSTALL=/tmp/potato-dev
 mkdir -p $POTATO_INSTALL/bin
-bun build --compile src/cli.tsx --outfile $POTATO_INSTALL/bin/potato
+go build -o $POTATO_INSTALL/bin/potato ./cmd/potato
 $POTATO_INSTALL/bin/potato init zsh > $POTATO_INSTALL/init.zsh
 source $POTATO_INSTALL/init.zsh
 potato   # the wrapper function, exactly as installed users get it

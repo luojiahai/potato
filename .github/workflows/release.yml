@@ -14,10 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test
-      - run: bunx tsc --noEmit
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+      - run: go test ./...
+      - run: go vet ./...
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - name: Build all targets
         run: bash scripts/build.sh "${GITHUB_REF_NAME#v}"
       - name: Publish release
