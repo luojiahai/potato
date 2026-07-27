@@ -23,8 +23,8 @@ func screens(t *testing.T) map[string]string {
 		"list":    nil,
 		"nomatch": {"zzz"},
 		"args":    {"enter"},
-		"edit":    {"ctrl+a"},
-		"delete":  {"ctrl+d"},
+		"edit":    {"tab", "a"},
+		"delete":  {"tab", "d"},
 	} {
 		m := New(fixtureDeps())
 		m.SetSize(80, 24)
@@ -32,6 +32,26 @@ func screens(t *testing.T) map[string]string {
 		out[name] = m.View().Content
 	}
 	return out
+}
+
+// Which of the list screen's two zones has the keyboard is carried by the
+// search glyph and by the caret, neither of which survives being de-ANSI'd —
+// so the goldens can only see the footer change. This asserts the rest.
+func TestTheSearchGlyphSaysWhereTheKeyboardIs(t *testing.T) {
+	m := New(fixtureDeps())
+	m.SetSize(80, 24)
+	if !strings.Contains(m.View().Content, focusStyle().Render("⌕ ")) {
+		t.Error("the search glyph is not lit while the field has the keyboard")
+	}
+
+	press(m, []string{"tab"})
+	if !strings.Contains(m.View().Content, sectionStyle().Render("⌕ ")) {
+		t.Error("the search glyph stayed lit after the list took the keyboard")
+	}
+	caret := strings.SplitN(caretStyle.Render("x"), "x", 2)[0]
+	if strings.Contains(m.View().Content, caret) {
+		t.Error("a blurred search field still carries a caret")
+	}
 }
 
 func TestViewCarriesTheBrandColours(t *testing.T) {

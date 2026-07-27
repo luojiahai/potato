@@ -11,4 +11,4 @@
      host = prod-1
 
  ──────────────────────────────────────
- ↵ run · ^Y copy · ^A add · esc quit
+ ↵ run · ^Y copy · esc quit

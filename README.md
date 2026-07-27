@@ -16,7 +16,7 @@ Type `potato`. Fuzzy-find a command, press **Enter** — the rendered command la
 
 Commands are templates: `ssh {{host=prod-1}} 'deploy.sh'` prompts for `host` (pre-filled with your last value, then the default) with a live preview before hand-off.
 
-- **Ctrl-A** add · **Ctrl-E** edit · **Ctrl-D** delete, all in-app
+- **Tab** hands the keyboard to the list, where **a** add · **e** edit · **d** delete, all in-app. The search field keeps every readline key, so Ctrl-A and Ctrl-E — and the ⌘←/⌘→ your terminal sends as those — still mean start and end of line.
 - `potato import <file|->` — merge someone else's library in; on a name clash both are kept (the incoming one renamed `name (N)`). `--override` replaces yours wholesale instead.
 - `potato update` / `potato uninstall` — self-explanatory; uninstall keeps your data unless you `--purge`
 

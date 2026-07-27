@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luojiahai/potato/internal/library"
@@ -107,7 +108,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flash = ""
 		return m, nil
 	case tea.KeyPressMsg:
-		if msg.String() == "ctrl+c" {
+		if key.Matches(msg, keymap.global.Cancel) {
 			// Ink's exitOnCtrlC: quit with no hand-off, so the --out file is
 			// written empty and the wrapper treats it as cancelled.
 			return m, m.quit()

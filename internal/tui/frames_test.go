@@ -60,8 +60,18 @@ func press(m *Model, keys []string) {
 			send(m, tea.KeyPressMsg{Code: tea.KeyEnter})
 		case "tab":
 			send(m, tea.KeyPressMsg{Code: tea.KeyTab})
+		case "shift+tab":
+			send(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		case "esc":
+			send(m, tea.KeyPressMsg{Code: tea.KeyEscape})
 		case "down":
 			send(m, tea.KeyPressMsg{Code: tea.KeyDown})
+		case "up":
+			send(m, tea.KeyPressMsg{Code: tea.KeyUp})
+		case "ctrl+y":
+			send(m, tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl})
+		// ^A, ^E and ^D are kept in this table precisely so the regression
+		// tests can press them and prove they no longer act on the list.
 		case "ctrl+a":
 			send(m, tea.KeyPressMsg{Code: 'a', Mod: tea.ModCtrl})
 		case "ctrl+e":
@@ -152,22 +162,26 @@ func TestFrames(t *testing.T) {
 		{name: "list-14x80-scroll-middle", rows: 14, columns: 80, lib: ptr(longLibrary()), keys: down(8)},
 		{name: "list-14x80-scroll-end", rows: 14, columns: 80, lib: ptr(longLibrary()), keys: down(14)},
 
+		// the list screen's other zone: tab hands it the keyboard, and the
+		// footer is the only part of that a de-ANSI'd frame can see
+		{name: "list-24x80-actions", rows: 24, columns: 80, keys: []string{"tab"}},
+
 		// the confirm is inline on the list, not a screen of its own
-		{name: "list-24x80-confirm-delete", rows: 24, columns: 80, keys: []string{"ctrl+d"}},
+		{name: "list-24x80-confirm-delete", rows: 24, columns: 80, keys: []string{"tab", "d"}},
 
 		{name: "args-24x80", rows: 24, columns: 80, keys: []string{"enter"}},
 		{name: "args-24x80-tab", rows: 24, columns: 80, keys: []string{"tail", "enter", "tab"}},
 		{name: "args-14x80-short", rows: 14, columns: 80, keys: []string{"tail", "enter"}},
-		{name: "edit-new-24x80", rows: 24, columns: 80, keys: []string{"ctrl+a"}},
-		{name: "edit-new-24x80-refused", rows: 24, columns: 80, keys: []string{"ctrl+a", "enter"}},
-		{name: "edit-new-24x80-typed", rows: 24, columns: 80, keys: []string{"ctrl+a", "backup", "tab", "tab", "tar -czf {{out=x.tgz}} ."}},
-		{name: "edit-existing-24x80", rows: 24, columns: 80, keys: []string{"ctrl+e"}},
-		{name: "edit-existing-14x80-short", rows: 14, columns: 80, keys: []string{"ctrl+e"}},
+		{name: "edit-new-24x80", rows: 24, columns: 80, keys: []string{"tab", "a"}},
+		{name: "edit-new-24x80-refused", rows: 24, columns: 80, keys: []string{"tab", "a", "enter"}},
+		{name: "edit-new-24x80-typed", rows: 24, columns: 80, keys: []string{"tab", "a", "backup", "tab", "tab", "tar -czf {{out=x.tgz}} ."}},
+		{name: "edit-existing-24x80", rows: 24, columns: 80, keys: []string{"tab", "e"}},
+		{name: "edit-existing-14x80-short", rows: 14, columns: 80, keys: []string{"tab", "e"}},
 
 		// a Command longer than the space it is given: the detail strip caps
 		// and marks what it cut, and the edit screen scrolls to the caret
 		{name: "list-24x80-long", rows: 24, columns: 80, lib: ptr(longCommandLibrary())},
-		{name: "edit-12x80-long", rows: 12, columns: 80, lib: ptr(longCommandLibrary()), keys: []string{"ctrl+e"}},
+		{name: "edit-12x80-long", rows: 12, columns: 80, lib: ptr(longCommandLibrary()), keys: []string{"tab", "e"}},
 	}
 
 	for _, tc := range cases {
@@ -303,11 +317,11 @@ func TestTheFrameHoldsItsHeight(t *testing.T) {
 		"a query that matches nothing": {"zzz"},
 		"a query that matches one":     {"tail"},
 		"the selection moved":          {"down"},
-		"the add form":                 {"ctrl+a"},
-		"the add form, typed into":     {"ctrl+a", "backup", "tab", "tab", "tar -czf {{out=x.tgz}} ."},
-		"the edit form":                {"ctrl+e"},
+		"the add form":                 {"tab", "a"},
+		"the add form, typed into":     {"tab", "a", "backup", "tab", "tab", "tar -czf {{out=x.tgz}} ."},
+		"the edit form":                {"tab", "e"},
 		"the arg screen":               {"enter"},
-		"the delete confirm":           {"ctrl+d"},
+		"the delete confirm":           {"tab", "d"},
 	} {
 		m := New(fixtureDeps())
 		m.SetSize(80, 24)
@@ -326,8 +340,8 @@ func TestDegenerateTerminalSizes(t *testing.T) {
 	screens := map[string][]string{
 		"list":    nil,
 		"args":    {"enter"},
-		"edit":    {"ctrl+e"},
-		"confirm": {"ctrl+d"},
+		"edit":    {"tab", "e"},
+		"confirm": {"tab", "d"},
 		"nomatch": {"zzz"},
 	}
 	for _, size := range [][2]int{{0, 0}, {1, 1}, {2, 2}, {4, 3}, {8, 6}, {20, 10}, {-5, -5}} {

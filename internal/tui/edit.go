@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -104,11 +105,11 @@ func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	if !ok {
 		return s.forward(msg)
 	}
-	switch keyMsg.String() {
-	case "esc":
+	switch {
+	case key.Matches(keyMsg, keymap.edit.Cancel):
 		m.screen = newListScreen(m)
 		return nil
-	case "enter":
+	case key.Matches(keyMsg, keymap.edit.Save):
 		if s.problem(m) != "" {
 			// No flash: the inline warning says the same thing and stays put
 			// until the problem is fixed, where a toast would expire while the
@@ -117,10 +118,10 @@ func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		return s.save(m)
-	case "tab", "down":
+	case key.Matches(keyMsg, keymap.form.Next):
 		s.setFocus(s.focus + 1)
 		return nil
-	case "shift+tab", "up":
+	case key.Matches(keyMsg, keymap.form.Prev):
 		s.setFocus(s.focus - 1)
 		return nil
 	}
@@ -173,7 +174,7 @@ func (s *editScreen) save(m *Model) tea.Cmd {
 }
 
 func (s *editScreen) keys(*Model) []footerKey {
-	return []footerKey{{"↵", "save"}, {"tab", "next field"}, {"esc", "cancel"}}
+	return footerKeys(keymap.edit.Save, keymap.form.Next, keymap.edit.Cancel)
 }
 
 // rows renders one field's value, wrapped to the width and carrying the caret

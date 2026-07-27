@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -71,18 +72,18 @@ func (s *argsScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	if !ok {
 		return s.forward(msg)
 	}
-	switch keyMsg.String() {
-	case "esc":
+	switch {
+	case key.Matches(keyMsg, keymap.args.Back):
 		m.screen = newListScreen(m)
 		return nil
-	case "enter":
+	case key.Matches(keyMsg, keymap.args.Run):
 		return m.run(s.id, s.values())
-	case "ctrl+y":
+	case key.Matches(keyMsg, keymap.args.Copy):
 		return m.copy(s.id, s.values())
-	case "tab", "down":
+	case key.Matches(keyMsg, keymap.form.Next):
 		s.setFocus(s.focus + 1)
 		return nil
-	case "shift+tab", "up":
+	case key.Matches(keyMsg, keymap.form.Prev):
 		s.setFocus(s.focus - 1)
 		return nil
 	}
@@ -99,7 +100,7 @@ func (s *argsScreen) forward(msg tea.Msg) tea.Cmd {
 }
 
 func (s *argsScreen) keys(*Model) []footerKey {
-	return []footerKey{{"↵", "run"}, {"^Y", "copy"}, {"tab", "next field"}, {"esc", "back"}}
+	return footerKeys(keymap.args.Run, keymap.args.Copy, keymap.form.Next, keymap.args.Back)
 }
 
 // labelWidth is the gutter every arg row shares, so the values line up down

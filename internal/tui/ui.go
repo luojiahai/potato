@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luojiahai/potato/internal/placeholders"
@@ -192,7 +193,10 @@ func pin(top, bottom []string, height int) []string {
 
 // ---------- footer ----------
 
-type footerKey struct{ chord, label string }
+// footerKey is a binding's help text — see footerKeys in keys.go. It is an
+// alias rather than a type of its own so a footer row is the binding's own
+// words, with no second copy to drift from.
+type footerKey = key.Help
 
 // footer renders the two rows every screen ends with: the rule that anchors the
 // keys to the bottom of the screen, and either the key hints or a flash toast.
@@ -215,9 +219,9 @@ func footer(keys []footerKey, flash string, width int) []string {
 		if i > 0 {
 			b.WriteString(dimStyle.Render(" · "))
 		}
-		b.WriteString(accentStyle.Bold(true).Render(k.chord))
+		b.WriteString(accentStyle.Bold(true).Render(k.Key))
 		if labelled {
-			b.WriteString(dimStyle.Render(" " + k.label))
+			b.WriteString(dimStyle.Render(" " + k.Desc))
 		}
 	}
 	return append(out, b.String())
@@ -229,7 +233,7 @@ func footerWidth(keys []footerKey) int {
 		if i > 0 {
 			w += 3 // " · "
 		}
-		w += ansi.StringWidth(k.chord) + 1 + ansi.StringWidth(k.label)
+		w += ansi.StringWidth(k.Key) + 1 + ansi.StringWidth(k.Desc)
 	}
 	return w
 }

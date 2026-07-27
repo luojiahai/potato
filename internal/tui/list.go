@@ -23,9 +23,25 @@ import (
 	"github.com/luojiahai/potato/internal/search"
 )
 
+// focus is which of the list screen's two zones has the keyboard. The screen is
+// split this way so the search field can keep the whole readline key set: every
+// verb lives in the zone where nothing is being spelled, and there a bare
+// letter costs nothing. See keys.go for why that matters.
+type focus int
+
+const (
+	// focusSearch: the query field. Every chord it does not claim belongs to
+	// readline — which is the point. ^A is line-start again.
+	focusSearch focus = iota
+	// focusList: the results. The field is blurred, so the verbs can be plain
+	// letters and an unbound key is dropped rather than typed.
+	focusList
+)
+
 type listScreen struct {
 	input textinput.Model
 	sel   int
+	focus focus
 	// confirming holds the id of the Command awaiting a delete confirmation,
 	// or "". The confirm is inline rather than a screen of its own so the
 	// detail strip keeps showing what is about to be deleted while you answer.
@@ -33,13 +49,29 @@ type listScreen struct {
 }
 
 func newListScreen(m *Model) *listScreen {
-	input := newField()
-	// The search field is the one place ^A and ^E must NOT mean line-start
-	// and line-end: the list screen spends them on add and edit.
-	input.KeyMap.LineStart = key.NewBinding()
-	input.KeyMap.LineEnd = key.NewBinding()
-	input.Focus()
-	return &listScreen{input: input}
+	s := &listScreen{input: newField()}
+	// An empty Library has nothing to search and one thing to do, and `a` has
+	// to work on the first key a new user presses.
+	if len(m.lib.Commands) == 0 {
+		s.focus = focusList
+		return s
+	}
+	s.setFocus(focusSearch)
+	return s
+}
+
+// setFocus moves the keyboard between the screen's two zones. The caret goes
+// with it: the field that has it is the field that will receive a keystroke.
+func (s *listScreen) setFocus(f focus) {
+	s.focus = f
+	if f != focusSearch {
+		s.input.Blur()
+		return
+	}
+	// The blink command is dropped, the way every field on every other screen
+	// drops it — potato's caret is a steady block, and a caret that blinked
+	// after a tab round-trip but not on launch would read as two carets.
+	s.input.Focus()
 }
 
 // newField builds a text input shaped like potato's fields: no prompt, no
@@ -85,61 +117,44 @@ func (s *listScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 		return cmd
 	}
 
-	results := s.results(m)
-	selected := s.selected(m)
-
 	// While a confirm is open it owns the keyboard: the answer is one
 	// keystroke, and letting anything else through would let the query change
-	// under a confirm that names a Command by id.
+	// under a confirm that names a Command by id. It is checked before the
+	// focus branch — from the list zone, `y` is copy, and a confirm that read
+	// it that way would copy the Command it was asking to delete.
 	if s.confirming != "" {
-		switch keyMsg.String() {
-		case "y", "Y":
+		if key.Matches(keyMsg, keymap.confirm.Yes) {
 			return s.delete(m)
-		default:
-			s.confirming = ""
-			return nil
 		}
+		s.confirming = ""
+		return nil
 	}
 
-	switch keyMsg.String() {
-	case "esc":
+	if s.focus == focusList {
+		return s.fromList(m, keyMsg)
+	}
+	return s.fromSearch(m, keyMsg)
+}
+
+// fromSearch handles the screen with the search field holding the keyboard.
+// Only the chords that cannot be typed are claimed; everything else — ^A, ^E,
+// home, end, ^K, ^U, ^W — is the field's own.
+func (s *listScreen) fromSearch(m *Model, msg tea.KeyPressMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, keymap.search.Actions):
+		s.setFocus(focusList)
+		return nil
+	case key.Matches(msg, keymap.search.Quit):
 		return m.quit()
-	case "ctrl+a":
-		m.screen = newEditScreen(m, nil)
+	case key.Matches(msg, keymap.search.Run):
+		return s.run(m)
+	case key.Matches(msg, keymap.search.Copy):
+		return s.copy(m)
+	case key.Matches(msg, keymap.search.Up):
+		s.move(m, -1)
 		return nil
-	case "ctrl+e":
-		if selected != nil {
-			m.screen = newEditScreen(m, selected)
-		}
-		return nil
-	case "ctrl+d":
-		if selected != nil {
-			s.confirming = selected.ID
-		}
-		return nil
-	case "ctrl+y":
-		if selected == nil {
-			return nil
-		}
-		if len(placeholders.Parse(selected.Command)) > 0 {
-			m.screen = newArgsScreen(m, selected)
-			return m.flashDefault("needs args — fill in, then ^Y")
-		}
-		return m.copy(selected.ID, map[string]string{})
-	case "enter":
-		if selected == nil {
-			return nil
-		}
-		if len(placeholders.Parse(selected.Command)) > 0 {
-			m.screen = newArgsScreen(m, selected)
-			return nil
-		}
-		return m.run(selected.ID, map[string]string{})
-	case "up":
-		s.sel = max(0, s.sel-1)
-		return nil
-	case "down":
-		s.sel = min(len(results)-1, s.sel+1)
+	case key.Matches(msg, keymap.search.Down):
+		s.move(m, +1)
 		return nil
 	}
 
@@ -147,10 +162,76 @@ func (s *listScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	s.input, cmd = s.input.Update(msg)
 	// Editing the query resets the selection; pure cursor motion does not.
+	// This is the only place the query can change, which is what lets the
+	// selection survive a round trip through the list zone.
 	if s.input.Value() != before {
 		s.sel = 0
 	}
 	return cmd
+}
+
+// fromList handles the screen with the results holding the keyboard: the verbs
+// are plain letters, and a key that is not one of them is dropped rather than
+// typed into a field that is not listening.
+func (s *listScreen) fromList(m *Model, msg tea.KeyPressMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, keymap.list.Search):
+		s.setFocus(focusSearch)
+	case key.Matches(msg, keymap.list.Quit):
+		return m.quit()
+	case key.Matches(msg, keymap.list.Add):
+		m.screen = newEditScreen(m, nil)
+	case key.Matches(msg, keymap.list.Edit):
+		if selected := s.selected(m); selected != nil {
+			m.screen = newEditScreen(m, selected)
+		}
+	case key.Matches(msg, keymap.list.Delete):
+		if selected := s.selected(m); selected != nil {
+			s.confirming = selected.ID
+		}
+	case key.Matches(msg, keymap.list.Run):
+		return s.run(m)
+	case key.Matches(msg, keymap.list.Copy):
+		return s.copy(m)
+	case key.Matches(msg, keymap.list.Up):
+		s.move(m, -1)
+	case key.Matches(msg, keymap.list.Down):
+		s.move(m, +1)
+	}
+	return nil
+}
+
+// run and copy are the two verbs both zones share, and the two that divert to
+// the arg form when the Command has Placeholders to fill in first.
+func (s *listScreen) run(m *Model) tea.Cmd {
+	selected := s.selected(m)
+	if selected == nil {
+		return nil
+	}
+	if len(placeholders.Parse(selected.Command)) > 0 {
+		m.screen = newArgsScreen(m, selected)
+		return nil
+	}
+	return m.run(selected.ID, map[string]string{})
+}
+
+func (s *listScreen) copy(m *Model) tea.Cmd {
+	selected := s.selected(m)
+	if selected == nil {
+		return nil
+	}
+	if len(placeholders.Parse(selected.Command)) > 0 {
+		m.screen = newArgsScreen(m, selected)
+		return m.flashDefault("needs args — fill in, then " + keymap.args.Copy.Help().Key)
+	}
+	return m.copy(selected.ID, map[string]string{})
+}
+
+// move walks the selection, clamping the old value into range first — a query
+// may have shortened the results since it was last set.
+func (s *listScreen) move(m *Model, delta int) {
+	last := len(s.results(m)) - 1
+	s.sel = max(0, min(last, min(s.sel, last)+delta))
 }
 
 // delete removes the Command the confirm names, by id — the query and the
@@ -175,12 +256,14 @@ func (s *listScreen) delete(m *Model) tea.Cmd {
 
 func (s *listScreen) keys(*Model) []footerKey {
 	if s.confirming != "" {
-		return []footerKey{{"y", "delete"}, {"n / esc", "keep"}}
+		return footerKeys(keymap.confirm.Yes, keymap.confirm.No)
 	}
-	return []footerKey{
-		{"↵", "run"}, {"^Y", "copy"}, {"^A", "add"},
-		{"^E", "edit"}, {"^D", "delete"}, {"esc", "quit"},
+	if s.focus == focusList {
+		return footerKeys(keymap.list.Run, keymap.list.Add, keymap.list.Edit,
+			keymap.list.Delete, keymap.list.Copy, keymap.list.Search)
 	}
+	return footerKeys(keymap.search.Run, keymap.search.Copy,
+		keymap.search.Actions, keymap.search.Quit)
 }
 
 func (s *listScreen) view(m *Model) []string {
@@ -210,9 +293,9 @@ func (s *listScreen) content(m *Model) []string {
 	if len(results) == 0 {
 		var rows []string
 		if len(m.lib.Commands) == 0 {
-			rows = gettingStarted(width - 2)
+			rows = s.gettingStarted(width - 2)
 		} else {
-			rows = noMatch(query, width-2)
+			rows = s.noMatch(query, width-2)
 		}
 		return append(top, indent(rows)...)
 	}
@@ -233,7 +316,15 @@ func (s *listScreen) content(m *Model) []string {
 // as the row narrows: what you are typing outranks how much it found, and the
 // sort order outranks neither.
 func (s *listScreen) searchRow(m *Model, results []library.Entry, width int) string {
-	left := accentStyle.Bold(true).Render("⌕ ") + s.input.View()
+	// The glyph carries focus the way an edit screen's section label does:
+	// accent when this field will receive the next keystroke, muted when the
+	// list below has taken the keyboard. The caret says the same thing — a
+	// blurred field draws none — and the footer says it in words.
+	glyph := focusStyle()
+	if s.focus != focusSearch {
+		glyph = sectionStyle()
+	}
+	left := glyph.Render("⌕ ") + s.input.View()
 	counts := fmt.Sprintf("%d/%d", len(results), len(m.lib.Commands))
 	for _, right := range []string{counts + " · recently used", counts, ""} {
 		if s.input.Value() != "" && strings.HasSuffix(right, "recently used") {
@@ -489,23 +580,53 @@ func rowMeta(m *Model, entry library.Entry, selected bool) (string, int) {
 // gettingStarted fills the list region for an empty Library — the first thing a
 // new user sees, so it says what potato is for and which keys to press rather
 // than reporting that there is nothing to show.
-func gettingStarted(inner int) []string {
+func (s *listScreen) gettingStarted(inner int) []string {
 	out := dimLines("Potato keeps the long commands you can never remember, and hands them back to your shell.", inner)
-	for _, k := range []footerKey{
-		{"^A", "add your first command"},
-		{"↵ ", "hand it to your shell"},
-		{"^Y", "copy it instead"},
-	} {
-		out = append(out, accentStyle.Bold(true).Render(k.chord)+dimStyle.Render("  "+k.label))
-	}
+	out = append(out, chordRows([]footerKey{
+		{Key: s.addChord(), Desc: "add your first command"},
+		{Key: keymap.list.Run.Help().Key, Desc: "hand it to your shell"},
+		{Key: s.copyChord(), Desc: "copy it instead"},
+	})...)
 	out = append(out, "")
 	return append(out, dimLines("Write {{name}} or {{name=default}} in a command and potato asks for the value before handing it over.", inner)...)
 }
 
 // noMatch fills the list region when the query filters everything out.
-func noMatch(query string, inner int) []string {
+func (s *listScreen) noMatch(query string, inner int) []string {
 	out := dimLines(fmt.Sprintf("Nothing in your library matches '%s'.", query), inner)
-	return append(out, accentStyle.Bold(true).Render("^A")+dimStyle.Render("  add it as a new command"))
+	return append(out, chordRows([]footerKey{{Key: s.addChord(), Desc: "add it as a new command"}})...)
+}
+
+// addChord and copyChord are what to press from wherever the keyboard is. The
+// verbs live with the list, so from the search field the answer is two presses
+// — which is why an empty Library starts in the list zone, where it is one.
+func (s *listScreen) addChord() string {
+	if s.focus == focusList {
+		return keymap.list.Add.Help().Key
+	}
+	return keymap.search.Actions.Help().Key + " " + keymap.list.Add.Help().Key
+}
+
+func (s *listScreen) copyChord() string {
+	if s.focus == focusList {
+		return keymap.list.Copy.Help().Key
+	}
+	return keymap.search.Copy.Help().Key
+}
+
+// chordRows renders a column of chord-and-label rows from the bindings
+// themselves, the chords padded so the labels line up whatever they are.
+func chordRows(rows []footerKey) []string {
+	w := 0
+	for _, r := range rows {
+		w = max(w, ansi.StringWidth(r.Key))
+	}
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		pad := strings.Repeat(" ", w-ansi.StringWidth(r.Key))
+		out = append(out, accentStyle.Bold(true).Render(r.Key)+pad+dimStyle.Render("  "+r.Desc))
+	}
+	return out
 }
 
 // dimLines wraps text and dims every row of it, closing with the blank row that

@@ -1,13 +1,14 @@
  ─ potato ───────────────────────────────────────────────────────────────── dev
- ⌕                                                        15/15 · recently used
+ ⌕                                                          3/3 · recently used
  ──────────────────────────────────────────────────────────────────────────────
-   ↑ 12 more
-   command number 12  echo 12
-   command number 13  echo 13
- ❯ command number 14  echo 14
+ ❯ deploy prod   ssh {{host=prod-1}} 'deploy.sh'                    ⌁1 · 2h ago
+   list ports    lsof -iTCP -sTCP:LISTEN
+   tail logs     tail -f {{file}} | grep {{pattern=error}}                   ⌁2
 
+ ─ deploy prod ────────────────────────────────────────────────────────────────
+   Roll out to production
+   $ ssh {{host=prod-1}} 'deploy.sh'
+     host = prod-1
 
- ─ command number 14 ──────────────────────────────────────────────────────────
-   $ echo 14
  ──────────────────────────────────────────────────────────────────────────────
- ↵ run · ^Y copy · tab actions · esc quit
+ ↵ run · a add · e edit · d delete · y copy · esc search
