@@ -79,6 +79,12 @@ func TestViewCarriesTheBrandColours(t *testing.T) {
 // whatever the user's terminal theme says it is, so a single one of them
 // leaking back in puts part of the palette outside potato's control — and next
 // to the fixed golds it can land anywhere.
+//
+// The caret is the one deliberate exception, and this test cannot see it: it is
+// an accent foreground under SGR 7, so the glyph inside the block comes out in
+// whatever the terminal calls its default background. That is the cost of the
+// fields painting the same cell bubbles paints in the search field, and it was
+// chosen. Reverse carries no palette index, so nothing here fires on it.
 func TestNoColourIsLeftToTheTerminalTheme(t *testing.T) {
 	for name, frame := range screens(t) {
 		for _, match := range sgr.FindAllStringSubmatch(frame, -1) {

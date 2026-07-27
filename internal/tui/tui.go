@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/cursor"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -56,6 +57,14 @@ type Model struct {
 	// body is the fixed row count every screen renders into; see measure.
 	body   int
 	screen screen
+	// caret is the blink clock for every field that draws its own caret — the
+	// edit fields and the arg rows. The search field blinks on the one inside
+	// its textinput, which bubbles keeps unexported and unreadable, so the
+	// fields cannot borrow it. They run the same implementation instead, which
+	// is what makes the two carets keep the same time rather than the same
+	// hand-copied constant. Only one field has the keyboard at a time, so one
+	// clock is all there is to keep.
+	caret cursor.Model
 }
 
 func New(deps Deps) *Model {
@@ -65,7 +74,14 @@ func New(deps Deps) *Model {
 		st:     deps.State,
 		width:  80,
 		height: 24,
+		caret:  cursor.New(),
 	}
+	// A new cursor starts hidden, so without this the first frame would have no
+	// caret in it at all. The command it returns is dropped, the way every
+	// field drops the one Focus hands back (see newField): the caret is solid
+	// until the first keystroke re-arms it, which is what the search field does
+	// and so is what the fields beside it should do.
+	m.caret.Focus()
 	m.measure()
 	m.screen = newListScreen(m)
 	return m
@@ -98,6 +114,7 @@ func (m *Model) Init() tea.Cmd {
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var blink tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.SetSize(msg.Width, msg.Height)
@@ -113,9 +130,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// written empty and the wrapper treats it as cancelled.
 			return m, m.quit()
 		}
+		// A caret that blinked while you were typing under it would read as a
+		// dropped keystroke, so every key restarts the clock solid — the same
+		// rule bubbles applies to the search field, which re-arms its own blink
+		// on every move of the caret.
+		m.caret.IsBlinked = false
+		blink = m.caret.Blink()
+	default:
+		// The blink's own message, on its way back. The cursor is choosy about
+		// which ones it answers to, so the field's copy of it further down is
+		// free to see this too and ignore it.
+		m.caret, blink = m.caret.Update(msg)
 	}
-	return m, m.screen.update(m, msg)
+	return m, tea.Batch(blink, m.screen.update(m, msg))
 }
+
+// caretOn is the blink's lit half — whether a field drawing its own caret
+// should paint it this frame.
+func (m *Model) caretOn() bool { return !m.caret.IsBlinked }
 
 func (m *Model) View() tea.View {
 	// The last frame before the program returns is an empty one, which erases

@@ -181,21 +181,33 @@ func (s *editScreen) keys(*Model) []footerKey {
 // when focused, and reports which row the caret landed on. Only the command
 // field highlights placeholders — it is the only field where `{{name}}` means
 // anything.
-func (s *editScreen) rows(i, inner int) ([]string, int) {
+func (s *editScreen) rows(i, inner int, on bool) ([]string, int) {
 	value := s.value(i)
 	focused := i == s.focus
 
 	if i != fieldCommand {
-		return valueRowsAt([]run{{text: value, style: textStyle}}, value, s.inputs[i].Position(), inner, focused)
+		return valueRowsAt([]run{{text: value, style: textStyle}}, value, s.inputs[i].Position(), inner, focused, on)
 	}
 	if value == "" {
 		// The hint lives on the caret row rather than in a section of its own,
 		// so it costs no row and vanishes on the first keystroke.
-		hint := dimStyle.Render("type a command — {{name}} or {{name=default}} become args")
+		const hint = "type a command — {{name}} or {{name=default}} become args"
 		if !focused {
-			return []string{ansi.Truncate(hint, inner, "")}, 0
+			return []string{ansi.Truncate(dimStyle.Render(hint), inner, "")}, 0
 		}
-		return []string{ansi.Truncate(caretStyle.Render(" ")+hint, inner, "")}, 0
+		// The caret sits on the hint's first character rather than in a cell of
+		// its own in front of it. Given a cell, the hint stepped a column to the
+		// right the moment the field took the keyboard — the text moved to make
+		// room for a caret that has nothing to sit on yet. A placeholder is
+		// exactly what a caret should be allowed to sit on: bubbles puts it on
+		// the first character in the search field, and the row is the same width
+		// either way, so nothing moves when focus arrives or leaves.
+		rs := []rune(hint)
+		head := dimStyle
+		if on {
+			head = caretStyle
+		}
+		return []string{ansi.Truncate(head.Render(string(rs[0]))+dimStyle.Render(string(rs[1:])), inner, "")}, 0
 	}
 	var runs []run
 	for _, seg := range placeholders.TemplateSegments(value) {
@@ -205,7 +217,7 @@ func (s *editScreen) rows(i, inner int) ([]string, int) {
 		}
 		runs = append(runs, run{text: seg.Text, style: style})
 	}
-	return valueRowsAt(runs, value, s.inputs[fieldCommand].Position(), inner, focused)
+	return valueRowsAt(runs, value, s.inputs[fieldCommand].Position(), inner, focused, on)
 }
 
 // label heads a field's section, in accent when the field has the keyboard.
@@ -233,9 +245,10 @@ func (s *editScreen) view(m *Model) []string {
 		bottom = []string{dangerStyle.Render("⚠ " + warning)}
 	}
 
-	nameRows, _ := s.rows(fieldName, inner)
-	descRows, _ := s.rows(fieldDescription, inner)
-	cmdRows, caretRow := s.rows(fieldCommand, inner)
+	on := m.caretOn()
+	nameRows, _ := s.rows(fieldName, inner, on)
+	descRows, _ := s.rows(fieldDescription, inner, on)
+	cmdRows, caretRow := s.rows(fieldCommand, inner, on)
 
 	nameSec := section(width, editLabels[fieldName], s.label(fieldName), "", nameRows)
 	descSec := section(width, editLabels[fieldDescription], s.label(fieldDescription), "optional", descRows)

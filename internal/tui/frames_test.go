@@ -215,11 +215,11 @@ func TestFrames(t *testing.T) {
 				}
 			}
 			if *updateFrames {
-				writeFrame(t, tc.name, got)
+				writeFrame(t, tc.name, columns(got))
 				return
 			}
-			if want := goldenFrame(t, tc.name); got != want {
-				t.Errorf("frame differs from the golden\n%s", lineDiff(want, got))
+			if want := goldenFrame(t, tc.name); columns(got) != want {
+				t.Errorf("frame differs from the golden\n%s", lineDiff(want, columns(got)))
 			}
 		})
 	}
@@ -237,11 +237,22 @@ func goldenFrame(t *testing.T, name string) string {
 	if err != nil {
 		t.Fatalf("missing golden (regenerate with -update-frames): %v", err)
 	}
-	lines := strings.Split(string(raw), "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimRight(line, " ")
+	return columns(string(raw))
+}
+
+// columns drops each row's trailing space, leaving where the content sits.
+//
+// Both sides of the comparison go through it. The goldens are text files and an
+// editor that strips trailing whitespace must not be able to break the suite —
+// and the frame can now end a row in one, because a caret parked past the last
+// character of a field keeps its cell and nothing follows it there. Neither is
+// layout: a trailing cell is the row's last column whether or not it is lit.
+func columns(frame string) string {
+	rows := strings.Split(frame, "\n")
+	for i, row := range rows {
+		rows[i] = strings.TrimRight(row, " ")
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(rows, "\n")
 }
 
 func writeFrame(t *testing.T, name, frame string) {

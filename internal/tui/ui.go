@@ -54,11 +54,19 @@ var (
 	dimStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color(mutedColor))
 	dangerStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color(dangerColor))
 	boldStyle      = lipgloss.NewStyle().Bold(true)
-	// The caret is a solid cell on the character, the way a terminal's own
-	// block cursor works — a fixed pair of colours rather than `Reverse`,
-	// which would swap whatever the run underneath carries and turn the caret
-	// gold over a placeholder and off-white over literal text.
-	caretStyle = lipgloss.NewStyle().Background(lipgloss.Color(accentColor)).Foreground(lipgloss.Color(inkColor))
+	// The caret is the cell bubbles paints in the search field, built the same
+	// way it builds it: an accent foreground under `Reverse`, which lands as an
+	// accent block with the glyph in the terminal's own background colour.
+	// Written out here rather than left to the one field that gets it for free,
+	// so the caret does not change identity when you move from the query to a
+	// form — the fields draw their own runs, and this is what they draw it as.
+	//
+	// `Reverse` is safe on a style that only sets a foreground: it swaps this
+	// pair, not whatever the run underneath carries, so the caret is the same
+	// block over a gold placeholder as over literal text. It is also the one
+	// cell in potato whose glyph colour the terminal picks — the price of the
+	// two carets being one cell.
+	caretStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(accentColor)).Inline(true).Reverse(true)
 	flashStyle = lipgloss.NewStyle().Background(lipgloss.Color(accentColor)).Foreground(lipgloss.Color(inkColor))
 )
 
@@ -244,12 +252,16 @@ func footerWidth(keys []footerKey) int {
 // caret drawn in when the field has focus, and reports which row the caret
 // landed on so a field taller than the space left for it can be windowed
 // around it.
-func valueRowsAt(runs []run, value string, pos, width int, focused bool) ([]string, int) {
+//
+// on is the blink's lit half. It is separate from focused because the two
+// answer different questions: focused says whether this field has a caret at
+// all, on says whether the caret is showing this frame.
+func valueRowsAt(runs []run, value string, pos, width int, focused, on bool) ([]string, int) {
 	caret := -1
 	if focused {
 		caret = min(pos, len([]rune(value)))
 	}
-	return wrapStyledHard(runs, width, caret)
+	return wrapStyledHard(runs, width, caret, on)
 }
 
 // window slides a block of rows so that row `at` stays visible, the way a
@@ -290,6 +302,13 @@ func timeAgo(iso string, now time.Time) string {
 // trimRightVisible drops trailing spaces while preserving the escape
 // sequences that follow them — every rendered line is trimmed, and a styled
 // run's reset sits after the padding it closes.
+//
+// A reverse-video space is kept. It is the caret parked past the last character
+// of a field, and it is a painted cell rather than padding: a field's row ends
+// at its value, so the caret is the last thing on the line for as long as you
+// are typing at the end of one. Trimmed, it left an empty styled run behind and
+// drew nothing — the caret was invisible in every edit field, and visible in
+// the search field only because the result count sits to its right.
 func trimRightVisible(s string) string {
 	toks := tokenize(s)
 	for {
@@ -300,12 +319,48 @@ func trimRightVisible(s string) string {
 				break
 			}
 		}
-		if idx < 0 || toks[idx] != " " {
+		if idx < 0 || toks[idx] != " " || painted(toks[:idx]) {
 			break
 		}
 		toks = append(toks[:idx], toks[idx+1:]...)
 	}
 	return strings.Join(toks, "")
+}
+
+// painted reports whether the run a space belongs to is reverse-video, by
+// reading the escape that opened it. lipgloss emits a run's whole style in one
+// SGR immediately before it and a reset immediately after, so the sequences
+// sitting directly behind the space are that style and nothing else.
+func painted(before []string) bool {
+	for i := len(before) - 1; i >= 0; i-- {
+		if !strings.HasPrefix(before[i], "\x1b") {
+			return false
+		}
+		params, ok := sgrParams(before[i])
+		if !ok {
+			continue
+		}
+		for _, p := range params {
+			// A reset closes the run behind it, so nothing before it can be
+			// what this space is wearing.
+			if p == "0" || p == "" {
+				return false
+			}
+			if p == "7" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sgrParams splits a CSI ... m sequence into its parameters, reporting false
+// for any other escape.
+func sgrParams(tok string) ([]string, bool) {
+	if !strings.HasPrefix(tok, "\x1b[") || !strings.HasSuffix(tok, "m") {
+		return nil, false
+	}
+	return strings.Split(strings.TrimSuffix(strings.TrimPrefix(tok, "\x1b["), "m"), ";"), true
 }
 
 // tokenize splits a string into single runes and whole escape sequences
@@ -401,14 +456,15 @@ func wrapStyled(runs []run, width int) []string {
 
 // wrapStyledHard folds a styled line at the panel's edge without dropping a
 // rune, overlays a block caret on the one at caret (negative draws none), and
-// reports the row that caret landed on.
+// reports the row that caret landed on. on is the blink's lit half: on its dark
+// half the caret keeps its cell and its column, and only stops being painted.
 //
 // Editing surfaces wrap this way rather than on word boundaries. Word wrapping
 // discards the space it broke on, and a caret sitting on a discarded rune has
 // no cell to be drawn in — it would vanish exactly while you were typing at
 // the panel's edge. Breaking where the panel ends keeps every rune addressable,
 // and suits command text, which is not prose.
-func wrapStyledHard(runs []run, width, caret int) ([]string, int) {
+func wrapStyledHard(runs []run, width, caret int, on bool) ([]string, int) {
 	width = max(width, 1)
 
 	// owner indexes into runs per rune, so consecutive runes can be batched
@@ -426,15 +482,27 @@ func wrapStyledHard(runs []run, width, caret int) ([]string, int) {
 		// A caret parked past the last character gets a cell of its own — the
 		// only case where it occupies a column nothing else wants, and it
 		// displaces nothing because there is nothing to its right.
+		//
+		// The cell is taken on the blink's dark half too. Handing it back would
+		// shorten the row by a column twice a second, and everything that
+		// measures itself against the rendered width — an arg row's fill and
+		// its hint — would step sideways in time with the blink.
 		if caret >= len(text) {
+			if len(runs) == 0 {
+				runs = append(runs, run{style: textStyle})
+			}
 			text = append(text, ' ')
-			owner = append(owner, 0)
+			owner = append(owner, len(runs)-1)
 			caret = len(text) - 1
 		}
 		// Point the caret's rune at a run of its own, so the batching below
-		// breaks around it without needing to know it is there.
-		owner[caret] = len(runs)
-		runs = append(runs, run{style: caretStyle})
+		// breaks around it without needing to know it is there. On the dark
+		// half it stays with the run underneath, which is what that rune looks
+		// like with nothing on it.
+		if on {
+			owner[caret] = len(runs)
+			runs = append(runs, run{style: caretStyle})
+		}
 	}
 	if len(text) == 0 {
 		return []string{""}, 0

@@ -207,10 +207,9 @@ func TestDeleteConfirmTreatsAnyOtherKeyAsCancel(t *testing.T) {
 
 // The caret marks the one field that will receive a keystroke, and no other.
 func TestOnlyTheFocusedFieldCarriesTheCaret(t *testing.T) {
-	// Taken from the style rather than hand-written: lipgloss emits the
-	// foreground and background in one combined SGR, so the colours cannot be
-	// matched separately. No flash is raised in this flow, which matters
-	// because flashStyle happens to carry the same pair.
+	// Taken from the style rather than hand-written: lipgloss emits the reverse
+	// attribute and the colour in one combined SGR, so neither can be matched
+	// on its own.
 	caret := strings.SplitN(caretStyle.Render("x"), "x", 2)[0]
 	m, _ := harness(t)
 	press(m, []string{"tab", "a", "abc"})

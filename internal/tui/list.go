@@ -68,9 +68,11 @@ func (s *listScreen) setFocus(f focus) {
 		s.input.Blur()
 		return
 	}
-	// The blink command is dropped, the way every field on every other screen
-	// drops it — potato's caret is a steady block, and a caret that blinked
-	// after a tab round-trip but not on launch would read as two carets.
+	// The blink command is dropped, the way the Model drops the one its own
+	// caret clock hands back. Focus alone leaves the caret solid; the next
+	// keystroke re-arms the blink. Returning it here would start the field
+	// blinking on a tab round-trip but not on launch, which reads as two
+	// different carets rather than one that has just been handed the keyboard.
 	s.input.Focus()
 }
 

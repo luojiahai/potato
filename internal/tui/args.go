@@ -121,7 +121,7 @@ func (s *argsScreen) labelWidth() int {
 // rather than a second focus language for the same idea — so the row carries
 // its own content indent instead of being indented from outside, where the
 // leading spaces would fall outside the fill and break the bar.
-func (s *argsScreen) row(i, width int) string {
+func (s *argsScreen) row(i, width int, on bool) string {
 	p := s.ps[i]
 	focused := i == s.focus
 	inner := max(1, width-2)
@@ -147,7 +147,7 @@ func (s *argsScreen) row(i, width int) string {
 	valueWidth = max(1, valueWidth-hintWidth)
 
 	value, caret := windowValue(s.inputs[i].Value(), s.inputs[i].Position(), valueWidth, focused)
-	rows, _ := wrapStyledHard([]run{{text: value, style: onSelected(textStyle, focused)}}, valueWidth, caret)
+	rows, _ := wrapStyledHard([]run{{text: value, style: onSelected(textStyle, focused)}}, valueWidth, caret, on)
 	rendered := rows[0]
 	// Measured on the rendered run, not the value: a caret parked past the
 	// last character occupies a cell of its own, and charging the gap for the
@@ -188,8 +188,9 @@ func (s *argsScreen) view(m *Model) []string {
 	width := m.innerWidth()
 
 	top := []string{rule(width, "arguments · "+s.name, sectionStyle(), "")}
+	on := m.caretOn()
 	for i := range s.ps {
-		top = append(top, s.row(i, width))
+		top = append(top, s.row(i, width, on))
 	}
 
 	// The filled-in values are the only part of the preview the user just
