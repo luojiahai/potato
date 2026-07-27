@@ -24,7 +24,7 @@ Your library is one hand-editable JSON file, `~/.potato/commands.json` — copyi
 
 ## Develop
 
-Go 1.26+. The TUI is [Bubble Tea](https://github.com/charmbracelet/bubbletea) — see [ADR-0001](docs/adr/0001-bubble-tea-over-ink.md).
+Go 1.26+. The TUI is [Bubble Tea](https://github.com/charmbracelet/bubbletea).
 
 ```sh
 go run ./cmd/potato     # run the TUI from source

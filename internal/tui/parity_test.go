@@ -20,8 +20,7 @@ import (
 // One documented normalisation: Ink drew a decorative `▌` at the end of the
 // focused value, and the adopted textinput draws a real cursor over the cell
 // after it. Both are one column, so the goldens are compared with `▌` mapped
-// to a space. That is the whole of the rendering difference — see
-// docs/adr/0001-bubble-tea-over-ink.md.
+// to a space. That is the whole of the rendering difference.
 
 func fixtureDeps() Deps {
 	description := func(s string) *string { return &s }
@@ -141,8 +140,8 @@ func TestParityWithInk(t *testing.T) {
 
 // inkDegenerate lists the captured frames where Ink's flexbox ran out of room
 // and produced visibly broken output. Reproducing them would mean emulating
-// Yoga's flex-shrink over inline text; the Go build renders them correctly and
-// the difference is recorded in docs/adr/0001-bubble-tea-over-ink.md.
+// Yoga's flex-shrink over inline text; the Go build renders them correctly
+// instead, and each entry records what the difference is.
 var inkDegenerate = map[string]string{
 	"list-19x80": "Ink clipped the wordmark's top row and drew the detail panel's " +
 		"title and last line into its own borders (issue #55's symptom); the Go " +
