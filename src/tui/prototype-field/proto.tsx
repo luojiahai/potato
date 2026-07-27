@@ -14,26 +14,26 @@ import { parsePlaceholders } from '../../placeholders';
 import { apply, type Caps, type TextState } from './text';
 import { toGesture } from './keys';
 import {
-  CommandBlock, LABEL_WIDTH, rowsNeeded, VARIANTS, type CaretStyle,
+  CommandBlock, LABEL_WIDTH, Panel, rowsNeeded,
+  VariantA, VariantB, VariantC, VariantD, VariantE, type CaretStyle,
 } from './variants';
 
-const FRAME_COLOR = '#d78700';
+/**
+ * Layout metadata the host needs before it can size anything.
+ * `editChrome` — border rows the field area spends: one panel, or three.
+ * `labelRows`  — content rows spent on labels (panel titles ride the border).
+ */
+const LAYOUTS = [
+  { title: VariantE.title, kind: 'panels', valueWidth: VariantE.valueWidth, fixedRows: 0, editChrome: 6, labelRows: 0 },
+  { title: VariantD.title, kind: 'stacked', valueWidth: VariantD.valueWidth, fixedRows: 0, editChrome: 2, labelRows: 3 },
+  { title: VariantA.title, kind: 'inline', valueWidth: VariantA.valueWidth, fixedRows: 0, editChrome: 2, labelRows: 0 },
+  { title: VariantB.title, kind: 'inline', valueWidth: VariantB.valueWidth, fixedRows: 0, editChrome: 2, labelRows: 1 },
+  { title: VariantC.title, kind: 'inline', valueWidth: VariantC.valueWidth, fixedRows: 1, editChrome: 2, labelRows: 0 },
+] as const;
+
 const ACCENT_COLOR = '#ffaf5f';
 
 // ---------- real chrome, copied from App.tsx (throwaway: no sharing) ----------
-
-function Panel(props: { title?: string; children: React.ReactNode }) {
-  return (
-    <Box borderStyle="round" borderColor={FRAME_COLOR} flexDirection="column" paddingX={1}>
-      {props.title !== undefined && (
-        <Box marginTop={-1}>
-          <Text bold wrap="truncate"> {props.title} </Text>
-        </Box>
-      )}
-      {props.children}
-    </Box>
-  );
-}
 
 function Footer({ keys, flash }: { keys: Array<[string, string]>; flash: string | null }) {
   return (
@@ -122,7 +122,9 @@ const SAMPLES: Array<{ label: string; value: string }> = [
 const isCtrl = (input: string, key: { ctrl: boolean }, letter: string) =>
   (key.ctrl && input === letter) || input === String.fromCharCode(letter.charCodeAt(0) - 96);
 
-const ORDER = ['name', 'command', 'description'] as const;
+// command last: it is the only field that grows, so it expands into free space
+// instead of shoving name and description down the screen as you type.
+const ORDER = ['name', 'description', 'command'] as const;
 type FieldName = (typeof ORDER)[number];
 
 // ---------- the prototype app ----------
@@ -137,11 +139,12 @@ export function Proto() {
     command: SAMPLES[2]!.value,
     description: 'shrink a video for the web',
   });
-  const [focus, setFocus] = useState<number>(1); // start on the command field
+  const [focus, setFocus] = useState<number>(2); // start on the command field
   const [cursor, setCursor] = useState(SAMPLES[2]!.value.length);
   const [variant, setVariant] = useState(0);
   const [caretStyle, setCaretStyle] = useState<CaretStyle>('overlay');
   const [softMarks, setSoftMarks] = useState(false);
+  const [separators, setSeparators] = useState(true);
   const [flash, setFlash] = useState<string | null>(null);
   const [armed, setArmed] = useState(false); // escape-confirm-when-dirty (#39)
   const [dirty, setDirty] = useState(false);
@@ -150,21 +153,41 @@ export function Proto() {
   const columns = stdout?.columns ?? 80;
   const innerWidth = Math.max(20, columns - 6); // root paddingX + panel border + panel paddingX
 
-  const Variant = VARIANTS[variant]!;
+  const layout = LAYOUTS[variant]!;
   const field = ORDER[focus]!;
   const multiline = field === 'command';
-  const valueWidth = Math.max(1, Variant.valueWidth(innerWidth));
+  // E's gutter exists only while the soft-wrap marks are on (see VariantE)
+  const valueWidth = Math.max(
+    1,
+    layout.kind === 'panels' && !softMarks ? innerWidth : layout.valueWidth(innerWidth),
+  );
 
   const placeholders = parsePlaceholders(fields.command);
-  const argRows = placeholders.length > 0 ? 1 + placeholders.length : 0;
 
-  // edit panel (2 border + name + description) + template panel (2 border)
-  // + footer (2) + switcher (2) = 10, plus the args list
-  const free = Math.max(2, rows - 10 - argRows);
-  const needed = rowsNeeded(fields.command, valueWidth) + Variant.extraRows;
-  const fieldBudget = Variant.fixedRows || Math.max(1, Math.min(needed, free));
-  // #44: the field wins the budget; the template panel's body shrinks to zero
-  const templateBudget = Math.max(0, free - fieldBudget);
+  // rows the field area spends on everything *except* the command's value rows
+  const inline = layout.kind === 'inline';
+  const nameRows = inline ? 1 : rowsNeeded(fields.name, valueWidth);
+  const descRows = inline ? 1 : rowsNeeded(fields.description, valueWidth);
+  const sepRows = layout.kind === 'stacked' && separators ? 2 : 0;
+  const nonCommand = nameRows + descRows + layout.labelRows + sepRows;
+
+  // field borders + template border (2) + footer (2) + switcher (2)
+  const fixed = layout.editChrome + 6;
+  const avail = Math.max(1, rows - fixed - nonCommand);
+  const needed = rowsNeeded(fields.command, valueWidth);
+  // #44: the field wins the budget; everything below shrinks to zero
+  const fieldBudget = layout.fixedRows || Math.max(1, Math.min(needed, avail));
+  const rest = Math.max(0, avail - fieldBudget);
+
+  // The args list is unbounded in App.tsx today — a 12-placeholder Command
+  // punches straight through the panel's bottom border. Capped here too.
+  const argsWanted = placeholders.length > 0 ? 1 + placeholders.length : 0;
+  const argsBudget = Math.min(argsWanted, rest);
+  const showArgs = argsBudget >= 2;
+  const argsCapped = showArgs && argsBudget < argsWanted;
+  const shownArgs = showArgs ? Math.max(0, argsBudget - 1 - (argsCapped ? 1 : 0)) : 0;
+  const argsUsed = showArgs ? 1 + shownArgs + (argsCapped ? 1 : 0) : 0;
+  const templateBudget = Math.max(0, rest - argsUsed);
 
   const caps: Caps = { multiline, lineEnds: true, width: Math.max(1, valueWidth) };
 
@@ -199,10 +222,11 @@ export function Proto() {
 
   useInput((input, key) => {
     // ---- prototype harness keys, checked first ----
-    if (isCtrl(input, key, 'v')) return setVariant((v) => (v + 1) % VARIANTS.length);
+    if (isCtrl(input, key, 'v')) return setVariant((v) => (v + 1) % LAYOUTS.length);
     if (isCtrl(input, key, 't')) return setCaretStyle((s) => (s === 'overlay' ? 'bar' : 'overlay'));
     if (isCtrl(input, key, 'l')) return loadSample((sample + 1) % SAMPLES.length);
     if (isCtrl(input, key, 'r')) return setSoftMarks((s) => !s);
+    if (isCtrl(input, key, 'b')) return setSeparators((s) => !s);
 
     if (key.escape) {
       // #39: confirm when dirty, closing the data-loss path from Ink's 20 ms flush
@@ -227,40 +251,62 @@ export function Proto() {
 
   return (
     <Box flexDirection="column" paddingX={1} height={rows}>
-      <Panel title="edit 'transcode'">
-        <PlainField
-          label="name" value={fields.name} cursor={cursor}
-          focused={focus === 0} caretStyle={caretStyle}
+      {variant === 0 ? (
+        // E owns its own frames — one per field, so there is no outer panel
+        <VariantE
+          fields={fields} focus={focus} cursor={cursor} innerWidth={innerWidth}
+          budget={fieldBudget} caretStyle={caretStyle} softMarks={softMarks}
+          separators={separators}
         />
-        <Variant
-          label="command"
-          value={fields.command}
-          cursor={cursor}
-          focused={focus === 1}
-          innerWidth={innerWidth}
-          budget={fieldBudget}
-          caretStyle={caretStyle}
-          softMarks={softMarks}
-        />
-        <PlainField
-          label="description" value={fields.description} cursor={cursor}
-          focused={focus === 2} caretStyle={caretStyle} hint="(optional)"
-        />
-      </Panel>
+      ) : (
+        <Panel title="edit 'transcode'">
+          {variant === 1 ? (
+            <VariantD
+              fields={fields} focus={focus} cursor={cursor} innerWidth={innerWidth}
+              budget={fieldBudget} caretStyle={caretStyle} softMarks={softMarks}
+              separators={separators}
+            />
+          ) : (
+            <>
+              <PlainField
+                label="name" value={fields.name} cursor={cursor}
+                focused={focus === 0} caretStyle={caretStyle}
+              />
+              <PlainField
+                label="description" value={fields.description} cursor={cursor}
+                focused={focus === 1} caretStyle={caretStyle} hint="(optional)"
+              />
+              {(() => {
+                const V = variant === 2 ? VariantA : variant === 3 ? VariantB : VariantC;
+                return (
+                  <V
+                    label="command" value={fields.command} cursor={cursor}
+                    focused={focus === 2} innerWidth={innerWidth} budget={fieldBudget}
+                    caretStyle={caretStyle} softMarks={softMarks}
+                  />
+                );
+              })()}
+            </>
+          )}
+        </Panel>
+      )}
 
       <Panel title="template">
         {templateBudget > 0 && fields.command.trim() !== '' && (
           <CommandBlock value={fields.command} width={innerWidth} maxRows={templateBudget} />
         )}
-        {placeholders.length > 0 && (
+        {showArgs && (
           <Box flexDirection="column">
             <Text dimColor>args:</Text>
-            {placeholders.map((p) => (
+            {placeholders.slice(0, shownArgs).map((p) => (
               <Text key={p.name}>
                 {'  '}<Text color="yellow">{p.name}</Text>
                 {p.default !== undefined && <Text dimColor> = {p.default.replace(/\n/g, '␊')}</Text>}
               </Text>
             ))}
+            {argsCapped && (
+              <Text dimColor>{'  '}… +{placeholders.length - shownArgs} more</Text>
+            )}
           </Box>
         )}
       </Panel>
@@ -276,10 +322,10 @@ export function Proto() {
       <Box marginTop={1} paddingX={1}>
         <Text wrap="truncate">
           <Text backgroundColor="magenta" color="white" bold> PROTOTYPE </Text>
-          <Text color="magenta"> {(Variant as { title: string }).title}</Text>
+          <Text color="magenta"> {layout.title}</Text>
           <Text dimColor>
-            {'  ^V var · ^T caret '}{caretStyle}{' · ^R soft-marks '}{softMarks ? 'on' : 'off'}
-            {' · ^L '}{SAMPLES[sample]!.label}
+            {'  ^V var · ^T '}{caretStyle}{' · ^R soft '}{softMarks ? 'on' : 'off'}
+            {variant === 1 ? ` · ^B gaps ${separators ? 'on' : 'off'}` : ''}{' · ^L '}{SAMPLES[sample]!.label}
             {`  │ ${columns}×${rows} field ${fieldBudget}/${needed} tmpl ${templateBudget} cur ${cursor}`}
           </Text>
         </Text>
