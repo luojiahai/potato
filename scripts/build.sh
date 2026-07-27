@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Release build (spec §6.1): compile all four targets from one machine,
 # tar.gz each, and emit SHA256SUMS for install.sh / `potato update` to verify.
+#
+# The asset names are frozen: installed binaries resolve them by these exact
+# strings, so Go's amd64 is published as x64.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -12,11 +15,15 @@ mkdir -p dist
 
 for target in "${targets[@]}"; do
   echo "building potato-${target}…"
+  os="${target%-*}"
+  arch="${target#*-}"
+  [ "$arch" = x64 ] && arch=amd64
   mkdir -p "dist/${target}"
-  bun build --compile --minify src/cli.tsx \
-    --target="bun-${target}" \
-    --define "process.env.POTATO_VERSION=\"${version}\"" \
-    --outfile "dist/${target}/potato"
+  CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
+    -trimpath \
+    -ldflags "-s -w -X github.com/luojiahai/potato/internal/version.Version=${version}" \
+    -o "dist/${target}/potato" \
+    ./cmd/potato
   tar -czf "dist/potato-${target}.tar.gz" -C "dist/${target}" potato
 done
 
