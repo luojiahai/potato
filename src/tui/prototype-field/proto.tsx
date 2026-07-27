@@ -69,13 +69,15 @@ function PlainField(props: {
       </Box>
       <Text>
         {props.focused ? (
-          props.caretStyle === 'block' ? (
+          props.caretStyle === 'bar' ? (
             <>
               {before}<Text color="cyan">▌</Text>{at}{after}
             </>
           ) : (
             <>
-              {before}<Text inverse>{at || ' '}</Text>{after}
+              {before}
+              <Text backgroundColor="cyan" color="black">{at || ' '}</Text>
+              {after}
             </>
           )
         ) : (
@@ -138,7 +140,7 @@ export function Proto() {
   const [focus, setFocus] = useState<number>(1); // start on the command field
   const [cursor, setCursor] = useState(SAMPLES[2]!.value.length);
   const [variant, setVariant] = useState(0);
-  const [caretStyle, setCaretStyle] = useState<CaretStyle>('block');
+  const [caretStyle, setCaretStyle] = useState<CaretStyle>('overlay');
   const [softMarks, setSoftMarks] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [armed, setArmed] = useState(false); // escape-confirm-when-dirty (#39)
@@ -198,7 +200,7 @@ export function Proto() {
   useInput((input, key) => {
     // ---- prototype harness keys, checked first ----
     if (isCtrl(input, key, 'v')) return setVariant((v) => (v + 1) % VARIANTS.length);
-    if (isCtrl(input, key, 't')) return setCaretStyle((s) => (s === 'block' ? 'inverse' : 'block'));
+    if (isCtrl(input, key, 't')) return setCaretStyle((s) => (s === 'overlay' ? 'bar' : 'overlay'));
     if (isCtrl(input, key, 'l')) return loadSample((sample + 1) % SAMPLES.length);
     if (isCtrl(input, key, 'r')) return setSoftMarks((s) => !s);
 
@@ -276,7 +278,7 @@ export function Proto() {
           <Text backgroundColor="magenta" color="white" bold> PROTOTYPE </Text>
           <Text color="magenta"> {(Variant as { title: string }).title}</Text>
           <Text dimColor>
-            {'  ^V var · ^T '}{caretStyle}{' · ^R soft-marks '}{softMarks ? 'on' : 'off'}
+            {'  ^V var · ^T caret '}{caretStyle}{' · ^R soft-marks '}{softMarks ? 'on' : 'off'}
             {' · ^L '}{SAMPLES[sample]!.label}
             {`  │ ${columns}×${rows} field ${fieldBudget}/${needed} tmpl ${templateBudget} cur ${cursor}`}
           </Text>

@@ -10,8 +10,8 @@
 //   C  one-row viewport  — the field never grows; horizontal scroll follows the
 //                          caret, ↑/↓ page through logical lines
 //
-// Caret style is orthogonal and toggles independently (^T), so block-between
-// and inverse-on can be judged under any of the three.
+// Caret style is orthogonal and toggles independently (^T), so the overlay
+// cursor and the between-characters bar can be judged under any of the three.
 
 import React from 'react';
 import { Box, Text } from 'ink';
@@ -19,7 +19,26 @@ import { templateSegments } from '../../placeholders';
 import { clampViewport, rowOfOffset, visualRows } from './wrap';
 
 export const LABEL_WIDTH = 14;
-export type CaretStyle = 'block' | 'inverse';
+
+/**
+ * 'overlay' — a solid cell *on* the character, the way a terminal's own block
+ *   cursor works. Occupies no column of its own, so nothing shifts and the
+ *   wrap point never moves as you navigate.
+ * 'bar' — the `▌` *between* characters. Kept only for comparison: it costs a
+ *   real column, so text slides right under the caret.
+ */
+export type CaretStyle = 'overlay' | 'bar';
+
+const CARET_BG = 'cyan';
+
+/**
+ * Fixed colour regardless of what sits under it — a real cursor doesn't change
+ * colour over a placeholder. `inverse` would, since it just swaps the run's
+ * own foreground.
+ */
+const caretCell = (ch: string, key: number) => (
+  <Text key={key} backgroundColor={CARET_BG} color="black">{ch}</Text>
+);
 
 export interface FieldViewProps {
   label: string;
@@ -73,12 +92,10 @@ function renderRow(
     const ph = marks[off] === 1;
     if (caret === off) {
       flush();
-      if (style === 'block') {
+      if (style === 'bar') {
         out.push(<Text key={key++} color="cyan">▌</Text>);
       } else {
-        out.push(
-          <Text key={key++} inverse bold={ph} color={ph ? 'yellow' : 'cyan'}>{text[i]}</Text>,
-        );
+        out.push(caretCell(text[i]!, key++));
         continue;
       }
     }
@@ -91,9 +108,9 @@ function renderRow(
   // caret parked past the last character of this row
   if (caret !== null && caret === start + text.length) {
     out.push(
-      style === 'block'
+      style === 'bar'
         ? <Text key={key++} color="cyan">▌</Text>
-        : <Text key={key++} inverse> </Text>,
+        : caretCell(' ', key++),
     );
   }
   return <Text>{out.length ? out : ' '}</Text>;
@@ -284,7 +301,7 @@ export function CommandBlock({
       </Box>
       <Box flexDirection="column">
         {shown.map((r, i) => (
-          <Box key={i}>{renderRow(r.text, r.start, marks, null, 'block')}</Box>
+          <Box key={i}>{renderRow(r.text, r.start, marks, null, 'overlay')}</Box>
         ))}
         {capped && <Indicator text={`… +${rows.length - shown.length} more lines`} />}
       </Box>
