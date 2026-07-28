@@ -5,14 +5,14 @@
  ❯ list ports    lsof -iTCP -sTCP:LISTEN
    tail logs     tail -f {{file}} | grep {{pattern=error}}                   ⌁2
 
+
+
+
+
  ──────────────────────────────────────────────────────────────────────────────
    Name         list ports
    Description  Show listening processes
    Command      $ lsof -iTCP -sTCP:LISTEN
-
-
-
-
 
 
 

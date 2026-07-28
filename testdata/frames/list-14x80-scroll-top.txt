@@ -4,10 +4,10 @@
 
  ❯ command number 0   echo 0
    command number 1   echo 1
-   ↓ 13 more
+   command number 2   echo 2
+   command number 3   echo 3
+   command number 4   echo 4
+   ↓ 10 more
 
- ──────────────────────────────────────────────────────────────────────────────
-   Name         command number 0
-   Command      $ echo 0
  ──────────────────────────────────────────────────────────────────────────────
  ↵ Run · ^Y Copy · tab Actions · esc Quit

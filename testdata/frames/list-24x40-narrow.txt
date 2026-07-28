@@ -5,16 +5,16 @@
    list ports
    tail logs                         ⌁2
 
+
+
+
+
  ──────────────────────────────────────
    Name         deploy prod
    Description  Roll out to production
    Command      $ ssh {{host=prod-1}}
                 'deploy.sh'
    Arguments    host = prod-1
-
-
-
-
 
 
 

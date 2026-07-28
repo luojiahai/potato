@@ -5,15 +5,15 @@
    list ports    lsof -iTCP -sTCP:LISTEN
    tail logs     tail -f {{file}} | grep {{pattern=error}}                   ⌁2
 
+
+
+
+
  ──────────────────────────────────────────────────────────────────────────────
    Name         deploy prod
    Description  Roll out to production
    Command      $ ssh {{host=prod-1}} 'deploy.sh'
    Arguments    host = prod-1
-
-
-
-
 
 
 

@@ -3,6 +3,12 @@
  ──────────────────────────────────────────────────────────────────────────────
  ❯ rsync everything  rsync -avz --delete --exclude '.git' --exclude 'node_…  ⌁5
 
+
+
+
+
+
+
  ──────────────────────────────────────────────────────────────────────────────
    Name         rsync everything
    Command      $ rsync -avz --delete --exclude '.git' --exclude 'node_modules'
@@ -13,11 +19,5 @@
                 user = deploy
                 host
                 app
-
-
-
-
-
-
  ──────────────────────────────────────────────────────────────────────────────
  ↵ Run · ^Y Copy · tab Actions · esc Quit

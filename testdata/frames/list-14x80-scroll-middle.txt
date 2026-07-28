@@ -1,13 +1,13 @@
  ─ Potato ───────────────────────────────────────────────────────────────── dev
  ⌕                                                        15/15 · Recently used
  ──────────────────────────────────────────────────────────────────────────────
-   ↑ 7 more
+   ↑ 4 more
+   command number 4   echo 4
+   command number 5   echo 5
+   command number 6   echo 6
    command number 7   echo 7
  ❯ command number 8   echo 8
    ↓ 6 more
 
- ──────────────────────────────────────────────────────────────────────────────
-   Name         command number 8
-   Command      $ echo 8
  ──────────────────────────────────────────────────────────────────────────────
  ↵ Run · ^Y Copy · tab Actions · esc Quit

@@ -301,14 +301,17 @@ func (s *listScreen) content(m *Model) []string {
 		return append(top, indent(rows)...)
 	}
 
-	// The detail strip follows the list rather than pinning to the bottom of
-	// the screen. Pinned, a three-command library put it thirteen rows below
-	// the row it described — the strip read as an unrelated status bar instead
-	// of as the selection's own detail. Following the list, it only ever moves
-	// when the result count does, which is to say while you are typing a query
-	// and looking at the search row anyway; it never moves under an arrow key.
+	// Both regions are as fixed as the frame they sit in: the list keeps its
+	// seven rows — padded out rather than handing spare rows down when the
+	// results run short — and the strip's height comes from the frame alone,
+	// so neither a query nor an arrow key can move the strip's rule or the
+	// list's bottom edge.
 	detail := s.detail(m, results, sel, width)
-	rows := s.listRows(m, results, sel, max(0, body-len(top)-len(detail)), width, query)
+	budget := max(0, min(listRegionRows, body-len(top)-len(detail)))
+	rows := s.listRows(m, results, sel, budget, width, query)
+	for len(rows) < budget {
+		rows = append(rows, "")
+	}
 	return append(append(top, rows...), detail...)
 }
 
@@ -344,30 +347,23 @@ func (s *listScreen) searchRow(m *Model, results []library.Entry, width int) str
 
 // detail renders the selected Command below the list, pinned above the footer.
 //
-// Its height is measured across every result rather than from the selected one,
-// so it does not change as the selection moves — a strip that grew and shrank
-// would move the list's bottom edge, and with it the scroll window, on every
-// press of ↓. The price is blank rows under a short Command in a library that
-// holds a long one, and blank rows above the footer cost nothing: they are not
-// fenced in a box, so they read as space rather than as something missing.
+// Its height comes from the frame alone, the way the frame's comes from the
+// terminal: no query, keystroke or Command can grow or shrink it. The price
+// is blank rows under a short Command, and blank rows cost nothing — they are
+// not fenced in a box, so they read as space rather than as something missing
+// — while a Command too long for the strip is cut with an ellipsis.
 func (s *listScreen) detail(m *Model, results []library.Entry, sel, width int) []string {
 	body := m.bodyHeight()
-	// Below this the list is the only thing worth having.
-	if body < 10 {
-		return nil
-	}
 	inner := width - 2
 
-	need := 0
-	for _, entry := range results {
-		if n := len(s.detailContent(m, entry, inner)); n > need {
-			need = n
-		}
+	// The list's rows come first: the strip takes what the frame leaves after
+	// the three top rows, the list region, and its own blank and rule, up to
+	// its cap. On a terminal too short for both, the strip is the one to go —
+	// below that the list is the only thing worth having.
+	rows := min(detailMaxRows, body-3-listRegionRows-2)
+	if rows < 1 {
+		return nil
 	}
-	// Twelve rows carries every field with a command wrapped over three and
-	// the arguments it will ask for — and never more than two thirds of the
-	// frame, so the strip cannot squeeze the list out entirely.
-	rows := min(max(need, 1), min(detailMaxRows, max(1, body*2/3)))
 
 	content := s.detailContent(m, results[sel], inner)
 	if len(content) > rows {
@@ -436,8 +432,15 @@ type rowLayout struct {
 // preview narrower than this is more ellipsis than command.
 const previewFloor = 24
 
-// detailMaxRows caps the detail strip; see listScreen.detail.
-const detailMaxRows = 12
+// listRegionRows is the fixed height of the list region: seven rows of
+// commands — or five with the overflow counters around them — padded out
+// with blanks when the results run short.
+const listRegionRows = 7
+
+// detailMaxRows caps the detail strip's content: ten rows is the fullest
+// entry it is asked to carry — a name, a description, a command wrapped over
+// three rows, and five arguments.
+const detailMaxRows = 10
 
 func (s *listScreen) columns(m *Model, results []library.Entry, width int) rowLayout {
 	meta, longest := 0, 0
