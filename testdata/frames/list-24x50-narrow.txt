@@ -1,14 +1,23 @@
- ─ potato ─────────────────────────────────── dev
- ⌕                            3/3 · recently used
+ ─ Potato ─────────────────────────────────── dev
+ ⌕                            3/3 · Recently used
  ────────────────────────────────────────────────
  ❯ deploy prod                        ⌁1 · 2h ago
    list ports
    tail logs                                   ⌁2
 
- ─ deploy prod ──────────────────────────────────
-   Roll out to production
-   $ ssh {{host=prod-1}} 'deploy.sh'
-     host = prod-1
+ ────────────────────────────────────────────────
+   Name         deploy prod
+   Description  Roll out to production
+   Command      $ ssh {{host=prod-1}} 'deploy.sh'
+   Arguments    host = prod-1
+
+
+
+
+
+
+
+
 
  ────────────────────────────────────────────────
- ↵ run · ^Y copy · tab actions · esc quit
+ ↵ Run · ^Y Copy · tab Actions · esc Quit

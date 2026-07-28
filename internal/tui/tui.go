@@ -54,9 +54,7 @@ type Model struct {
 	handoff string
 	// quitting makes the next frame an empty one, erasing the inline block.
 	quitting bool
-	// body is the fixed row count every screen renders into; see measure.
-	body   int
-	screen screen
+	screen   screen
 	// caret is the blink clock for every field that draws its own caret — the
 	// edit fields and the arg rows. The search field blinks on the one inside
 	// its textinput, which bubbles keeps unexported and unreadable, so the
@@ -82,7 +80,6 @@ func New(deps Deps) *Model {
 	// until the first keystroke re-arms it, which is what the search field does
 	// and so is what the fields beside it should do.
 	m.caret.Focus()
-	m.measure()
 	m.screen = newListScreen(m)
 	return m
 }
@@ -101,14 +98,13 @@ func (m *Model) SetSize(width, height int) {
 	if height > 0 {
 		m.height = height
 	}
-	m.measure()
 }
 
 func (m *Model) Init() tea.Cmd {
 	// A v1→v2 upgrade happened on this launch: announce it with a transient
 	// footer toast, populated from the first frame (migration ran pre-render).
 	if m.deps.Migrated {
-		return m.setFlash("upgraded your library to v2", 4000*time.Millisecond)
+		return m.setFlash("Upgraded your library to v2", 4000*time.Millisecond)
 	}
 	return nil
 }
@@ -186,52 +182,22 @@ func (m *Model) View() tea.View {
 
 const (
 	// inlineBodyCap is the most rows any screen may draw above the footer. A
-	// Library has no size limit and a terminal does; twenty rows is about what
-	// `fzf --height 40%` claims on a normal terminal — enough to scan, little
-	// enough that opening potato does not push what you were reading off the
-	// top of the screen.
-	inlineBodyCap = 20
-	// inlineBodyFloor keeps the frame tall enough to add a Command in. The
-	// frame is one height for every screen, and the list is not the screen
-	// that needs the most room: twelve rows is the add form with one
-	// placeholder — three field sections, the blanks between them, and the
-	// placeholder list under the command. Sized to the list alone, a small
-	// Library would give itself a frame with nowhere to put the form that
-	// grows it, and the placeholder list would be the first thing squeezed out.
-	inlineBodyFloor = 12
+	// Library has no size limit and a terminal does; twenty-four rows is
+	// enough to scan a large Library, little enough that opening potato does
+	// not push everything you were reading off the top of the screen.
+	inlineBodyCap = 24
 )
 
-// measure fixes the frame's height for as long as the Library and the terminal
-// stay the way they are.
-//
-// Rendering inline, a frame that grew and shrank with its content would reflow
-// the terminal under it on every keystroke — filter three commands down to one
-// and everything below potato jumps up. So the height is measured once, from
-// the whole Library with no query against it, and then held: every screen pads
-// to it, a query that matches nothing is the same size as one that matches
-// everything, and the block never moves while it is open.
-//
-// It is measured rather than fixed at a constant so that a small Library still
-// gets a small frame. Six commands do not need twenty rows.
-func (m *Model) measure() {
-	// The probe renders the list with no query — the whole Library — against
-	// the ceiling, which is the tallest the frame could ever need to be.
-	m.body = m.ceiling()
-	want := len(newListScreen(m).content(m))
-	m.body = min(m.ceiling(), max(min(inlineBodyFloor, m.ceiling()), want))
-}
-
-// ceiling is the tallest body this terminal allows. It depends on the terminal
-// alone, never on what is being drawn into it — a layout that sized a region
-// from bodyHeight would be reading a number measure had not finished computing,
-// and would render into a frame sized for a different layout than the one it
-// then drew.
-func (m *Model) ceiling() int {
+// bodyHeight is the fixed row count every screen renders into. It depends on
+// the terminal alone, never on what is being drawn into it: rendering inline,
+// a frame that grew and shrank with its content would reflow the terminal
+// under it on every keystroke — filter three commands down to one and
+// everything below potato jumps up. One height for the terminal, every screen
+// pads to it, and the block never moves while it is open.
+func (m *Model) bodyHeight() int {
 	// the footer's rule and key row, and the shell prompt the frame sits under
 	return max(1, min(m.height-3, inlineBodyCap))
 }
-
-func (m *Model) bodyHeight() int { return m.body }
 
 func (m *Model) innerWidth() int { return m.width - 2 }
 
@@ -263,9 +229,6 @@ func (m *Model) rememberUse(id string, args map[string]string) {
 
 func (m *Model) updateLibrary(next library.Library) {
 	m.lib = next
-	// adding or deleting a Command is the one thing that resizes the frame,
-	// and it is a keystroke the user meant
-	m.measure()
 	if m.deps.SaveLibrary != nil {
 		m.deps.SaveLibrary(next)
 	}
@@ -284,7 +247,7 @@ func (m *Model) copy(id string, values map[string]string) tea.Cmd {
 	if m.deps.Copy != nil {
 		m.deps.Copy(renderCommand(entry.Command, values))
 	}
-	return m.flashDefault("copied to clipboard")
+	return m.flashDefault("Copied to clipboard")
 }
 
 // ---------- program ----------

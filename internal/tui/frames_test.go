@@ -292,12 +292,9 @@ func itoa(n int) string {
 // The detail strip is where you check what a Command will ask you for before
 // you press Enter, so a Command with five arguments has to show five.
 //
-// The frame's height is measured from a probe render of this very screen, so
-// anything here that sizes itself from the frame's height is reading a number
-// that is not settled yet: the probe measures one layout and the screen then
-// draws a smaller one into it. That went unnoticed because the goldens are
-// regenerated from the renderer — a truncated strip is only a diff against the
-// frame before it, and it passes its own test either way.
+// The goldens would not catch a truncated strip — they are regenerated from
+// the renderer, so a truncation is only a diff against the frame before it,
+// and it passes its own test either way. The check has to be explicit here.
 func TestTheDetailStripShowsEveryArgument(t *testing.T) {
 	deps := fixtureDeps()
 	deps.Library = longCommandLibrary()

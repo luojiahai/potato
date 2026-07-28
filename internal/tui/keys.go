@@ -47,10 +47,10 @@ var keymap = struct {
 	global: globalKeys{Cancel: key.NewBinding(key.WithKeys("ctrl+c"))},
 
 	search: searchKeys{
-		Run:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "run")),
-		Copy:    key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("^Y", "copy")),
-		Actions: key.NewBinding(key.WithKeys("tab", "shift+tab"), key.WithHelp("tab", "actions")),
-		Quit:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "quit")),
+		Run:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "Run")),
+		Copy:    key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("^Y", "Copy")),
+		Actions: key.NewBinding(key.WithKeys("tab", "shift+tab"), key.WithHelp("tab", "Actions")),
+		Quit:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "Quit")),
 		// The arrows move the selection without leaving the field, so a query
 		// can be narrowed and then walked without a mode change. Unadvertised:
 		// the footer's room is better spent on the keys that need announcing.
@@ -59,14 +59,14 @@ var keymap = struct {
 	},
 
 	list: listKeys{
-		Run:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "run")),
-		Add:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
-		Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
-		Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
-		Copy:   key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy")),
+		Run:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "Run")),
+		Add:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "Add")),
+		Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "Edit")),
+		Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "Delete")),
+		Copy:   key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "Copy")),
 		Up:     key.NewBinding(key.WithKeys("up", "k")),
 		Down:   key.NewBinding(key.WithKeys("down", "j")),
-		Search: key.NewBinding(key.WithKeys("tab", "shift+tab", "esc"), key.WithHelp("esc", "search")),
+		Search: key.NewBinding(key.WithKeys("tab", "shift+tab", "esc"), key.WithHelp("esc", "Search")),
 		// Bound but not advertised: the footer's last chord has to be the way
 		// back to the field, and esc from there is the way out of potato. A
 		// seventh chord would make `esc search` the first thing a narrow
@@ -78,23 +78,23 @@ var keymap = struct {
 		// Both cases spelled out: a printable key reports its own text and
 		// Key.String prefers it, so a shifted y arrives as "Y", never as
 		// "shift+y", and key.Matches compares strings.
-		Yes: key.NewBinding(key.WithKeys("y", "Y"), key.WithHelp("y", "delete")),
+		Yes: key.NewBinding(key.WithKeys("y", "Y"), key.WithHelp("y", "Delete")),
 		// Any other key cancels; this binding exists so the footer can name one.
-		No: key.NewBinding(key.WithKeys("n", "esc"), key.WithHelp("n / esc", "keep")),
+		No: key.NewBinding(key.WithKeys("n", "esc"), key.WithHelp("n / esc", "Keep")),
 	},
 
 	form: formKeys{
-		Next: key.NewBinding(key.WithKeys("tab", "down"), key.WithHelp("tab", "next field")),
+		Next: key.NewBinding(key.WithKeys("tab", "down"), key.WithHelp("tab", "Next field")),
 		Prev: key.NewBinding(key.WithKeys("shift+tab", "up")),
 	},
 	edit: editKeys{
-		Save:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "save")),
-		Cancel: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+		Save:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "Save")),
+		Cancel: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "Cancel")),
 	},
 	args: argsKeys{
-		Run:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "run")),
-		Copy: key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("^Y", "copy")),
-		Back: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		Run:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "Run")),
+		Copy: key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("^Y", "Copy")),
+		Back: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "Back")),
 	},
 }
 

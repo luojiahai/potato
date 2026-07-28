@@ -128,9 +128,9 @@ func (s *argsScreen) row(i, width int, on bool) string {
 
 	hint := ""
 	if _, ok := s.lastArgs[p.Name]; ok {
-		hint = "(last used)"
+		hint = "(Last used)"
 	} else if p.HasDefault {
-		hint = fmt.Sprintf("(default: %s)", p.Default)
+		hint = fmt.Sprintf("(Default: %s)", p.Default)
 	}
 
 	gutter := s.labelWidth()
@@ -187,7 +187,7 @@ func windowValue(value string, pos, width int, focused bool) (string, int) {
 func (s *argsScreen) view(m *Model) []string {
 	width := m.innerWidth()
 
-	top := []string{rule(width, "arguments · "+s.name, sectionStyle(), "")}
+	top := []string{rule(width, "Arguments · "+s.name, sectionStyle(), "")}
 	on := m.caretOn()
 	for i := range s.ps {
 		top = append(top, s.row(i, width, on))
@@ -208,6 +208,6 @@ func (s *argsScreen) view(m *Model) []string {
 	// than absorbing the free height the way the old panel did — a sixteen-row
 	// box around a one-line command.
 	top = append(top, "")
-	top = append(top, section(width, "will run", sectionStyle(), "", wrapStyled(preview, width-2))...)
+	top = append(top, section(width, "Will run", sectionStyle(), "", wrapStyled(preview, width-2))...)
 	return pin(top, nil, m.bodyHeight())
 }

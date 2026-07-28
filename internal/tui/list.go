@@ -224,7 +224,7 @@ func (s *listScreen) copy(m *Model) tea.Cmd {
 	}
 	if len(placeholders.Parse(selected.Command)) > 0 {
 		m.screen = newArgsScreen(m, selected)
-		return m.flashDefault("needs args — fill in, then " + keymap.args.Copy.Help().Key)
+		return m.flashDefault("Needs args — fill in, then " + keymap.args.Copy.Help().Key)
 	}
 	return m.copy(selected.ID, map[string]string{})
 }
@@ -253,7 +253,7 @@ func (s *listScreen) delete(m *Model) tea.Cmd {
 	}
 	next.Commands = commands
 	m.updateLibrary(next)
-	return m.flashDefault(fmt.Sprintf("deleted '%s'", entry.Name))
+	return m.flashDefault(fmt.Sprintf("Deleted '%s'", entry.Name))
 }
 
 func (s *listScreen) keys(*Model) []footerKey {
@@ -273,8 +273,7 @@ func (s *listScreen) view(m *Model) []string {
 }
 
 // content is the list screen's rows before they are padded out to the frame's
-// height. Model.measure sizes the frame from this, so it has to be the rows the
-// screen actually wants rather than the rows it ends up drawing.
+// height.
 func (s *listScreen) content(m *Model) []string {
 	width := m.innerWidth()
 	body := m.bodyHeight()
@@ -287,7 +286,7 @@ func (s *listScreen) content(m *Model) []string {
 	// seven-row wordmark and its strapline used to spend eight on. It gives the
 	// frame a top edge to answer the footer's bottom one.
 	top := []string{
-		rule(width, "potato", brandStyle(), versionLabel()),
+		rule(width, "Potato", brandStyle(), versionLabel()),
 		s.searchRow(m, results, width),
 		rule(width, "", lipglossPlain, ""),
 	}
@@ -328,8 +327,8 @@ func (s *listScreen) searchRow(m *Model, results []library.Entry, width int) str
 	}
 	left := glyph.Render("⌕ ") + s.input.View()
 	counts := fmt.Sprintf("%d/%d", len(results), len(m.lib.Commands))
-	for _, right := range []string{counts + " · recently used", counts, ""} {
-		if s.input.Value() != "" && strings.HasSuffix(right, "recently used") {
+	for _, right := range []string{counts + " · Recently used", counts, ""} {
+		if s.input.Value() != "" && strings.HasSuffix(right, "Recently used") {
 			continue
 		}
 		gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
@@ -352,13 +351,9 @@ func (s *listScreen) searchRow(m *Model, results []library.Entry, width int) str
 // holds a long one, and blank rows above the footer cost nothing: they are not
 // fenced in a box, so they read as space rather than as something missing.
 func (s *listScreen) detail(m *Model, results []library.Entry, sel, width int) []string {
-	// Everything here is measured against the terminal's ceiling rather than
-	// the frame's height, because the frame's height is measured from this.
-	// Reading bodyHeight would size the strip from a number that is only
-	// settled once the strip has been sized.
-	ceiling := m.ceiling()
+	body := m.bodyHeight()
 	// Below this the list is the only thing worth having.
-	if ceiling < 10 {
+	if body < 10 {
 		return nil
 	}
 	inner := width - 2
@@ -369,10 +364,10 @@ func (s *listScreen) detail(m *Model, results []library.Entry, sel, width int) [
 			need = n
 		}
 	}
-	// Eight rows carries a description, a command wrapped over three, and the
-	// arguments it will ask for — and never more than half the frame, so the
-	// strip cannot crowd out the list it belongs to.
-	rows := min(max(need, 1), min(detailMaxRows, max(1, ceiling/2)))
+	// Twelve rows carries every field with a command wrapped over three and
+	// the arguments it will ask for — and never more than two thirds of the
+	// frame, so the strip cannot squeeze the list out entirely.
+	rows := min(max(need, 1), min(detailMaxRows, max(1, body*2/3)))
 
 	content := s.detailContent(m, results[sel], inner)
 	if len(content) > rows {
@@ -382,21 +377,48 @@ func (s *listScreen) detail(m *Model, results []library.Entry, sel, width int) [
 		content = append(content, "")
 	}
 	// the blank row that keeps the strip's rule off the last list row
-	return append([]string{""}, section(width, results[sel].Name, titleStyle(), "", content)...)
+	return append([]string{""}, section(width, "", lipglossPlain, "", content)...)
 }
 
-// detailContent builds the detail strip's rows: what the Command is for, what
-// it is, and what it will ask for. When it was last used lives on the list row
+// detailGutter is the column the detail strip's values hang from: its widest
+// label, Description, and the two columns after it.
+const detailGutter = 13
+
+// detailContent builds the detail strip's rows: what the Command is called,
+// what it is for, what it is, and what it will ask for — each field headed by
+// its label in the shared gutter. When it was last used lives on the list row
 // instead, where it can be compared against its neighbours.
 func (s *listScreen) detailContent(m *Model, entry library.Entry, inner int) []string {
+	value := max(1, inner-detailGutter)
 	var content []string
-	if entry.Description != nil && *entry.Description != "" {
-		for _, line := range wrapLines(*entry.Description, inner) {
-			content = append(content, dimStyle.Render(line))
+	add := func(label string, rows []string) {
+		for i, row := range rows {
+			head := strings.Repeat(" ", detailGutter)
+			if i == 0 {
+				head = sectionStyle().Render(label) +
+					strings.Repeat(" ", max(1, detailGutter-len(label)))
+			}
+			content = append(content, head+row)
 		}
 	}
-	content = append(content, commandBlock(entry.Command, inner)...)
-	return append(content, placeholderRows(placeholders.Parse(entry.Command), inner, true)...)
+
+	var name []string
+	for _, line := range wrapLines(entry.Name, value) {
+		name = append(name, titleStyle().Render(line))
+	}
+	add("Name", name)
+	if entry.Description != nil && *entry.Description != "" {
+		var desc []string
+		for _, line := range wrapLines(*entry.Description, value) {
+			desc = append(desc, dimStyle.Render(line))
+		}
+		add("Description", desc)
+	}
+	add("Command", commandBlock(entry.Command, value))
+	if ps := placeholders.Parse(entry.Command); len(ps) > 0 {
+		add("Arguments", placeholderRows(ps, value))
+	}
+	return content
 }
 
 // ---------- the list ----------
@@ -415,7 +437,7 @@ type rowLayout struct {
 const previewFloor = 24
 
 // detailMaxRows caps the detail strip; see listScreen.detail.
-const detailMaxRows = 8
+const detailMaxRows = 12
 
 func (s *listScreen) columns(m *Model, results []library.Entry, width int) rowLayout {
 	meta, longest := 0, 0
@@ -440,7 +462,7 @@ func (s *listScreen) columns(m *Model, results []library.Entry, width int) rowLa
 	// A name column sized to the longest name would swing with the query; the
 	// clamp keeps it inside a band wide enough to read and narrow enough to
 	// leave the preview something.
-	l.name = min(min(max(longest, 12), 32), free)
+	l.name = min(min(max(longest, 12), 40), free)
 	if rest := free - l.name - 2; rest >= previewFloor {
 		l.preview = rest
 	} else {
@@ -514,7 +536,7 @@ func (s *listScreen) rowFor(m *Model, entry library.Entry, selected bool, l rowL
 		width += l.preview + 2
 	}
 	if entry.ID == s.confirming {
-		label := fmt.Sprintf("⚠ delete '%s'? y/n", entry.Name)
+		label := fmt.Sprintf("⚠ Delete '%s'? y/n", entry.Name)
 		label = ansi.Truncate(label, width, "…")
 		fill := dangerStyle.Bold(true).Background(lipgloss.Color(surfaceColor))
 		return fill.Render(label + strings.Repeat(" ", max(0, width-ansi.StringWidth(label))))
@@ -585,9 +607,9 @@ func rowMeta(m *Model, entry library.Entry, selected bool) (string, int) {
 func (s *listScreen) gettingStarted(inner int) []string {
 	out := dimLines("Potato keeps the long commands you can never remember, and hands them back to your shell.", inner)
 	out = append(out, chordRows([]footerKey{
-		{Key: s.addChord(), Desc: "add your first command"},
-		{Key: keymap.list.Run.Help().Key, Desc: "hand it to your shell"},
-		{Key: s.copyChord(), Desc: "copy it instead"},
+		{Key: s.addChord(), Desc: "Add your first command"},
+		{Key: keymap.list.Run.Help().Key, Desc: "Hand it to your shell"},
+		{Key: s.copyChord(), Desc: "Copy it instead"},
 	})...)
 	out = append(out, "")
 	return append(out, dimLines("Write {{name}} or {{name=default}} in a command and potato asks for the value before handing it over.", inner)...)
@@ -596,7 +618,7 @@ func (s *listScreen) gettingStarted(inner int) []string {
 // noMatch fills the list region when the query filters everything out.
 func (s *listScreen) noMatch(query string, inner int) []string {
 	out := dimLines(fmt.Sprintf("Nothing in your library matches '%s'.", query), inner)
-	return append(out, chordRows([]footerKey{{Key: s.addChord(), Desc: "add it as a new command"}})...)
+	return append(out, chordRows([]footerKey{{Key: s.addChord(), Desc: "Add it as a new command"}})...)
 }
 
 // addChord and copyChord are what to press from wherever the keyboard is. The
@@ -657,16 +679,13 @@ func commandBlock(command string, inner int) []string {
 	return wrapStyled(runs, inner)
 }
 
-// placeholderRows lists a Command's Placeholders, one row each. The detail
-// strip indents them under the command they belong to; the edit screen's own
-// section has a rule that says the same thing, so it takes them flush.
-func placeholderRows(ps []placeholders.Placeholder, width int, indent bool) []string {
+// placeholderRows lists a Command's Placeholders, one row each, flush left —
+// the detail strip's gutter and the edit screen's section rule each say whose
+// they are.
+func placeholderRows(ps []placeholders.Placeholder, width int) []string {
 	out := make([]string, 0, len(ps))
 	for _, p := range ps {
 		row := highlightStyle.Render(p.Name)
-		if indent {
-			row = "  " + row
-		}
 		if p.HasDefault {
 			row += dimStyle.Render(" = " + p.Default)
 		}

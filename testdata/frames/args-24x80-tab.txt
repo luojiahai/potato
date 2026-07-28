@@ -1,8 +1,8 @@
- ─ arguments · tail logs ──────────────────────────────────────────────────────
+ ─ Arguments · tail logs ──────────────────────────────────────────────────────
    file
-   pattern  error                                              (default: error)
+   pattern  error                                              (Default: error)
 
- ─ will run ───────────────────────────────────────────────────────────────────
+ ─ Will run ───────────────────────────────────────────────────────────────────
    $ tail -f  | grep error
 
 
@@ -10,5 +10,14 @@
 
 
 
+
+
+
+
+
+
+
+
+
  ──────────────────────────────────────────────────────────────────────────────
- ↵ run · ^Y copy · tab next field · esc back
+ ↵ Run · ^Y Copy · tab Next field · esc Back

@@ -244,7 +244,7 @@ func TestOwnV1LibraryAutoMigratesOnLoad(t *testing.T) {
 	if got.exitCode != 0 {
 		t.Fatalf("exit %d: %s", got.exitCode, got.stderr)
 	}
-	if !strings.Contains(got.stderr, "upgraded your library to v2") {
+	if !strings.Contains(got.stderr, "Upgraded your library to v2") {
 		t.Errorf("stderr = %q", got.stderr)
 	}
 

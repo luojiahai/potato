@@ -1,14 +1,23 @@
- ─ potato ───────────────────────────────────────────────────────────────── dev
- ⌕                                                          3/3 · recently used
+ ─ Potato ───────────────────────────────────────────────────────────────── dev
+ ⌕                                                          3/3 · Recently used
  ──────────────────────────────────────────────────────────────────────────────
  ❯ deploy prod   ssh {{host=prod-1}} 'deploy.sh'                    ⌁1 · 2h ago
    list ports    lsof -iTCP -sTCP:LISTEN
    tail logs     tail -f {{file}} | grep {{pattern=error}}                   ⌁2
 
- ─ deploy prod ────────────────────────────────────────────────────────────────
-   Roll out to production
-   $ ssh {{host=prod-1}} 'deploy.sh'
-     host = prod-1
+ ──────────────────────────────────────────────────────────────────────────────
+   Name         deploy prod
+   Description  Roll out to production
+   Command      $ ssh {{host=prod-1}} 'deploy.sh'
+   Arguments    host = prod-1
+
+
+
+
+
+
+
+
 
  ──────────────────────────────────────────────────────────────────────────────
- ↵ run · a add · e edit · d delete · y copy · esc search
+ ↵ Run · a Add · e Edit · d Delete · y Copy · esc Search

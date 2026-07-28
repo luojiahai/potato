@@ -33,9 +33,9 @@ const (
 )
 
 var editLabels = [fieldCount]string{
-	fieldName:        "name",
-	fieldDescription: "description",
-	fieldCommand:     "command",
+	fieldName:        "Name",
+	fieldDescription: "Description",
+	fieldCommand:     "Command",
 }
 
 type editScreen struct {
@@ -80,13 +80,13 @@ func (s *editScreen) setFocus(i int) {
 func (s *editScreen) problem(m *Model) string {
 	name := strings.TrimSpace(s.value(fieldName))
 	if name == "" {
-		return "name is required"
+		return "Name is required"
 	}
 	if s.taken(m, name) {
 		return fmt.Sprintf("'%s' already exists", name)
 	}
 	if strings.TrimSpace(s.value(fieldCommand)) == "" {
-		return "command is required"
+		return "Command is required"
 	}
 	return ""
 }
@@ -148,7 +148,7 @@ func (s *editScreen) save(m *Model) tea.Cmd {
 		next.Commands = append(append([]library.Entry{}, m.lib.Commands...), entry)
 		m.updateLibrary(next)
 		m.screen = newListScreen(m)
-		return m.flashDefault("added")
+		return m.flashDefault("Added")
 	}
 
 	// rename/edit in place: keep the id and the file slot (only the fields
@@ -170,7 +170,7 @@ func (s *editScreen) save(m *Model) tea.Cmd {
 	next.Commands = commands
 	m.updateLibrary(next)
 	m.screen = newListScreen(m)
-	return m.flashDefault("saved")
+	return m.flashDefault("Saved")
 }
 
 func (s *editScreen) keys(*Model) []footerKey {
@@ -191,7 +191,7 @@ func (s *editScreen) rows(i, inner int, on bool) ([]string, int) {
 	if value == "" {
 		// The hint lives on the caret row rather than in a section of its own,
 		// so it costs no row and vanishes on the first keystroke.
-		const hint = "type a command — {{name}} or {{name=default}} become args"
+		const hint = "Type a command — {{name}} or {{name=default}} become args"
 		if !focused {
 			return []string{ansi.Truncate(dimStyle.Render(hint), inner, "")}, 0
 		}
@@ -251,10 +251,10 @@ func (s *editScreen) view(m *Model) []string {
 	cmdRows, caretRow := s.rows(fieldCommand, inner, on)
 
 	nameSec := section(width, editLabels[fieldName], s.label(fieldName), "", nameRows)
-	descSec := section(width, editLabels[fieldDescription], s.label(fieldDescription), "optional", descRows)
+	descSec := section(width, editLabels[fieldDescription], s.label(fieldDescription), "Optional", descRows)
 	var phSec []string
 	if ps := placeholders.Parse(s.value(fieldCommand)); len(ps) > 0 {
-		phSec = section(width, "placeholders", sectionStyle(), "", placeholderRows(ps, inner, false))
+		phSec = section(width, "Placeholders", sectionStyle(), "", placeholderRows(ps, inner))
 	}
 
 	// Everything but the command is as tall as its own content; the command

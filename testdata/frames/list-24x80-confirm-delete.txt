@@ -1,14 +1,23 @@
- ─ potato ───────────────────────────────────────────────────────────────── dev
- ⌕                                                          3/3 · recently used
+ ─ Potato ───────────────────────────────────────────────────────────────── dev
+ ⌕                                                          3/3 · Recently used
  ──────────────────────────────────────────────────────────────────────────────
- ⚠ delete 'deploy prod'? y/n
+ ⚠ Delete 'deploy prod'? y/n
    list ports    lsof -iTCP -sTCP:LISTEN
    tail logs     tail -f {{file}} | grep {{pattern=error}}                   ⌁2
 
- ─ deploy prod ────────────────────────────────────────────────────────────────
-   Roll out to production
-   $ ssh {{host=prod-1}} 'deploy.sh'
-     host = prod-1
+ ──────────────────────────────────────────────────────────────────────────────
+   Name         deploy prod
+   Description  Roll out to production
+   Command      $ ssh {{host=prod-1}} 'deploy.sh'
+   Arguments    host = prod-1
+
+
+
+
+
+
+
+
 
  ──────────────────────────────────────────────────────────────────────────────
- y delete · n / esc keep
+ y Delete · n / esc Keep

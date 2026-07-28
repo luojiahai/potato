@@ -172,7 +172,7 @@ func indent(rows []string) []string {
 // pin lays out a screen's body: content from the top, a status line flush
 // against the footer, and blank rows between them.
 //
-// Every screen is exactly the session's body height — see Model.measure. The
+// Every screen is exactly the session's body height — see Model.bodyHeight. The
 // blanks are not the framed void the boxes used to draw: they are the bottom of
 // a block that holds still while you type, in a terminal that would otherwise
 // reflow under it on every keystroke.
@@ -287,7 +287,7 @@ func timeAgo(iso string, now time.Time) string {
 	}
 	minutes := int(now.Sub(t).Minutes())
 	if minutes < 1 {
-		return "just now"
+		return "Just now"
 	}
 	if minutes < 60 {
 		return fmt.Sprintf("%dm ago", minutes)
