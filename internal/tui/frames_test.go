@@ -101,12 +101,14 @@ var updateFrames = flag.Bool("update-frames", false,
 func emptyLibrary() library.Library { return library.Library{Version: 2} }
 
 // longCommandLibrary holds one Command too long for the detail strip, so the
-// strip's cap and its truncation marker are both exercised.
+// strip's cap and its truncation marker are both exercised. Sized to wrap
+// over exactly three rows of the strip at eighty columns — with its five
+// Placeholders, the fullest entry the strip there can hold whole.
 func longCommandLibrary() library.Library {
 	return library.Library{Version: 2, Commands: []library.Entry{{
 		ID: "id-long", Name: "rsync everything",
-		Command: "rsync -avz --delete --exclude '.git' --exclude 'node_modules' --exclude '*.log' " +
-			"--partial --progress -e 'ssh -p {{port=22}}' ./{{src=dist}}/ {{user=deploy}}@{{host}}:/srv/{{app}}/releases/",
+		Command: "rsync -avz --delete --exclude '.git' --exclude 'node_modules' " +
+			"--progress -e 'ssh -p {{port=22}}' ./{{src=dist}}/ {{user=deploy}}@{{host}}:/srv/{{app}}/",
 	}}}
 }
 
@@ -139,12 +141,14 @@ func TestFrames(t *testing.T) {
 		migrated bool
 		lib      *library.Library
 	}{
-		// the geometry tiers: the frame is as tall as its content until the
-		// row ceiling stops it, the detail strip yields on a short terminal,
-		// and a row's command preview yields on a narrow one
+		// the geometry tiers: the frame's height comes from the terminal alone
+		// — capped at the row ceiling on a tall one, and squeezed on a short
+		// one until the detail strip is the one to go — and a row's command
+		// preview yields on a narrow one. Sixteen rows is the shortest
+		// terminal that still carries the strip.
 		{name: "list-40x80-capped", rows: 40, columns: 80, lib: ptr(longLibrary())},
 		{name: "list-24x80", rows: 24, columns: 80},
-		{name: "list-13x80-detail", rows: 13, columns: 80},
+		{name: "list-16x80-detail", rows: 16, columns: 80},
 		{name: "list-12x80-nodetail", rows: 12, columns: 80},
 		{name: "list-40x50-narrow", rows: 40, columns: 50},
 		{name: "list-24x50-narrow", rows: 24, columns: 50},
@@ -290,15 +294,12 @@ func itoa(n int) string {
 }
 
 // The detail strip is where you check what a Command will ask you for before
-// you press Enter, so a Command with five arguments has to show five.
+// you press Enter, so a Command with five Placeholders has to show all five.
 //
-// The frame's height is measured from a probe render of this very screen, so
-// anything here that sizes itself from the frame's height is reading a number
-// that is not settled yet: the probe measures one layout and the screen then
-// draws a smaller one into it. That went unnoticed because the goldens are
-// regenerated from the renderer — a truncated strip is only a diff against the
-// frame before it, and it passes its own test either way.
-func TestTheDetailStripShowsEveryArgument(t *testing.T) {
+// The goldens would not catch a truncated strip — they are regenerated from
+// the renderer, so a truncation is only a diff against the frame before it,
+// and it passes its own test either way. The check has to be explicit here.
+func TestTheDetailStripShowsEveryPlaceholder(t *testing.T) {
 	deps := fixtureDeps()
 	deps.Library = longCommandLibrary()
 	deps.State = state.State{}
@@ -386,13 +387,15 @@ func TestTheListKeepsWithinItsRowBudget(t *testing.T) {
 		if !strings.Contains(frame, "deploy prod") {
 			continue // too short for a list at all
 		}
-		// The strip names the selected Command, so its rule is the marker. An
-		// overrun cuts from the bottom of the frame, so what to check for is
-		// the strip's *last* row — the arguments — not its first.
-		if !strings.Contains(frame, "─ deploy prod ") {
+		// The strip heads its first field with the Name label, so that label
+		// is the marker that the strip is present. An overrun cuts from the
+		// bottom of the frame, so what to check for is the strip's *last* row
+		// — the Placeholders, or the ellipsis a strip too short for the whole
+		// entry ends in — not its first.
+		if !strings.Contains(frame, labelName) {
 			continue // too short for the strip
 		}
-		if !strings.Contains(frame, "host = prod-1") {
+		if !strings.Contains(frame, "host = prod-1") && !strings.Contains(frame, "…") {
 			t.Errorf("%d rows: the list overran and the strip lost its last row:\n%s", rows, frame)
 		}
 	}

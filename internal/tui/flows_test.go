@@ -90,7 +90,7 @@ func TestCtrlYCopiesWithoutHandingOff(t *testing.T) {
 	if m.Handoff() != "" {
 		t.Errorf("copy handed off: %q", m.Handoff())
 	}
-	if !strings.Contains(render(t, m), "copied to clipboard") {
+	if !strings.Contains(render(t, m), "Copied to clipboard") {
 		t.Error("no flash after copying")
 	}
 }
@@ -163,7 +163,7 @@ func TestEditRefusesAnEmptyName(t *testing.T) {
 	if len(rec.libraries) != 0 {
 		t.Error("an empty Command was saved")
 	}
-	if !strings.Contains(render(t, m), "name is required") {
+	if !strings.Contains(render(t, m), "Name is required") {
 		t.Error("no flash explaining the refusal")
 	}
 }
@@ -179,13 +179,13 @@ func TestDeleteConfirmsInlineWithoutLeavingTheList(t *testing.T) {
 		t.Fatalf("`d` left the list for %T", m.screen)
 	}
 	frame := render(t, m)
-	if !strings.Contains(frame, "⚠ delete 'deploy prod'? y/n") {
+	if !strings.Contains(frame, "⚠ Delete 'deploy prod'? y/n") {
 		t.Errorf("no inline confirm:\n%s", frame)
 	}
 	if !strings.Contains(frame, "ssh {{host=prod-1}} 'deploy.sh'") {
 		t.Errorf("the detail panel stopped showing the command being deleted:\n%s", frame)
 	}
-	if !strings.Contains(frame, "y delete") {
+	if !strings.Contains(frame, "y Delete") {
 		t.Error("the footer does not offer the confirm keys")
 	}
 }
@@ -199,7 +199,7 @@ func TestDeleteConfirmTreatsAnyOtherKeyAsCancel(t *testing.T) {
 		if len(rec.libraries) != 0 {
 			t.Errorf("%q deleted the Command", key)
 		}
-		if strings.Contains(render(t, m), "⚠ delete 'deploy prod'? y/n") {
+		if strings.Contains(render(t, m), "⚠ Delete 'deploy prod'? y/n") {
 			t.Errorf("%q left the confirm open", key)
 		}
 	}
@@ -235,7 +235,7 @@ func TestDeleteConfirmRemovesTheCommand(t *testing.T) {
 			t.Error("the Command was not removed")
 		}
 	}
-	if !strings.Contains(render(t, m), "deleted 'deploy prod'") {
+	if !strings.Contains(render(t, m), "Deleted 'deploy prod'") {
 		t.Error("no flash after deleting")
 	}
 }
@@ -410,7 +410,7 @@ func TestAnEmptyLibraryStartsInTheListZone(t *testing.T) {
 	if m.screen.(*listScreen).focus != focusList {
 		t.Fatal("an empty Library did not start in the list zone")
 	}
-	if frame := render(t, m); !strings.Contains(frame, "a  add your first command") {
+	if frame := render(t, m); !strings.Contains(frame, "a  Add your first command") {
 		t.Errorf("the getting-started panel does not offer a one-key add:\n%s", frame)
 	}
 	press(m, []string{"a"})
@@ -456,7 +456,7 @@ func TestMigratedLaunchShowsAToast(t *testing.T) {
 	m := New(deps)
 	m.SetSize(80, 24)
 	m.Init()
-	if !strings.Contains(render(t, m), "upgraded your library to v2") {
+	if !strings.Contains(render(t, m), "Upgraded your library to v2") {
 		t.Error("no migration toast")
 	}
 }

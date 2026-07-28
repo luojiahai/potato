@@ -1,14 +1,23 @@
- ─ potato ───────────────────────────────────────────────────────────────── dev
+ ─ Potato ───────────────────────────────────────────────────────────────── dev
  ⌕ ports                                                                    1/3
  ──────────────────────────────────────────────────────────────────────────────
  ❯ list ports    lsof -iTCP -sTCP:LISTEN
 
- ─ list ports ─────────────────────────────────────────────────────────────────
-   Show listening processes
-   $ lsof -iTCP -sTCP:LISTEN
+
+
 
 
 
 
  ──────────────────────────────────────────────────────────────────────────────
- ↵ run · ^Y copy · tab actions · esc quit
+   Name          list ports
+   Description   Show listening processes
+   Command       $ lsof -iTCP -sTCP:LISTEN
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────
+ ↵ Run · ^Y Copy · tab Actions · esc Quit

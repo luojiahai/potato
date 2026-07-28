@@ -1,14 +1,23 @@
- ─ potato ───────────────────────────────────────────────────────────────── dev
- ⌕                                                          3/3 · recently used
+ ─ Potato ───────────────────────────────────────────────────────────────── dev
+ ⌕                                                          3/3 · Recently used
  ──────────────────────────────────────────────────────────────────────────────
    deploy prod   ssh {{host=prod-1}} 'deploy.sh'                    ⌁1 · 2h ago
  ❯ list ports    lsof -iTCP -sTCP:LISTEN
    tail logs     tail -f {{file}} | grep {{pattern=error}}                   ⌁2
 
- ─ list ports ─────────────────────────────────────────────────────────────────
-   Show listening processes
-   $ lsof -iTCP -sTCP:LISTEN
+
+
 
 
  ──────────────────────────────────────────────────────────────────────────────
- ↵ run · ^Y copy · tab actions · esc quit
+   Name          list ports
+   Description   Show listening processes
+   Command       $ lsof -iTCP -sTCP:LISTEN
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────
+ ↵ Run · ^Y Copy · tab Actions · esc Quit

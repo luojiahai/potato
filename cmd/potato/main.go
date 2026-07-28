@@ -142,7 +142,7 @@ func runImport(args []string) {
 		die(err.Error())
 	}
 	if loaded.Migrated {
-		fmt.Fprintln(os.Stderr, "potato: upgraded your library to v2")
+		fmt.Fprintln(os.Stderr, "potato: Upgraded your library to v2")
 	}
 
 	result := importer.Merge(loaded.Library, theirs)

@@ -59,7 +59,7 @@ func TestTheCaretSurvivesTheTrim(t *testing.T) {
 // caret can sit on, and a hint that moved a column to the right the moment the
 // field took the keyboard would read as the field having been typed into.
 func TestTheHintDoesNotStepAsideForTheCaret(t *testing.T) {
-	const hint = "type a command"
+	const hint = "Type a command"
 	column := func(keys []string) (int, string) {
 		t.Helper()
 		m := New(fixtureDeps())
