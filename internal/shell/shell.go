@@ -5,6 +5,21 @@
 // with a `bind -x` widget triggered by a DSR round-trip (\e[5n → terminal
 // replies \e[0n at the next prompt), which keeps arbitrary command text out of
 // readline macro quoting.
+//
+// The generated text is pinned byte for byte by the goldens in testdata/init,
+// but a golden cannot tell you the script it approves of is valid zsh, or that
+// the prompt really gets pre-filled — only a live shell can. POTATO_INSTALL
+// moves the whole install off ~/.potato, so that shell can be yours:
+//
+//	export POTATO_INSTALL=/tmp/potato-dev
+//	mkdir -p $POTATO_INSTALL/bin
+//	go build -o $POTATO_INSTALL/bin/potato ./cmd/potato
+//	$POTATO_INSTALL/bin/potato init zsh > $POTATO_INSTALL/init.zsh
+//	source $POTATO_INSTALL/init.zsh
+//	potato   # the wrapper function, exactly as installed users get it
+//
+// Clean up with `unset -f potato` and `unset POTATO_INSTALL`. Edit either
+// template and you want this, not just a re-baselined golden.
 package shell
 
 import (

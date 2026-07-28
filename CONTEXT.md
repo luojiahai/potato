@@ -16,10 +16,6 @@ _Avoid_: database, collection, config
 A `{{name}}` or `{{name=default}}` slot in a Command's template, filled in via the arg form before hand-off.
 _Avoid_: variable, parameter, argument (an *argument* is the value supplied for a Placeholder)
 
-**Continuation**:
-A `\` immediately left of the cursor, which makes Enter insert a newline instead of saving — in the command field only, where multi-line is enabled. A typing rule, not a parsing rule: potato stores the backslash and the newline verbatim and elides neither, unlike the shell. `^J` inserts a newline with no Continuation, and a Command may hold such newlines.
-_Avoid_: line break, escape, wrap
-
 **Hand-off**:
 Delivering the rendered command to the user: Enter pre-fills the parent shell's prompt; Ctrl-Y copies to the clipboard. Potato's only output path — it never runs commands itself.
 _Avoid_: execute, run (potato-side)

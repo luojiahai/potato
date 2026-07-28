@@ -285,8 +285,13 @@ func (s *listScreen) content(m *Model) []string {
 	// its own, and the version rides the right end — one row for what the
 	// seven-row wordmark and its strapline used to spend eight on. It gives the
 	// frame a top edge to answer the footer's bottom one.
+	//
+	// The potato is the one glyph here that costs two columns rather than one.
+	// Nothing needs to know that: rule measures its label with StringWidth, so
+	// the dashes it draws are already short by two, and the narrow-width tests
+	// hold the line at 40 columns.
 	top := []string{
-		rule(width, "Potato", brandStyle(), versionLabel()),
+		rule(width, brand, brandStyle(), versionLabel()),
 		s.searchRow(m, results, width),
 		rule(width, "", lipglossPlain, ""),
 	}
@@ -591,8 +596,8 @@ func column(rendered string, width int, selected bool) string {
 }
 
 // oneLine flattens a Command to a single row of preview text. A Command may
-// hold newlines — potato stores a Continuation's backslash and newline verbatim
-// — and a row is one row.
+// hold newlines, since a hand-edited library file or an import can carry them
+// where the single-line edit fields cannot, and a row is one row.
 func oneLine(command string, width int) string {
 	flat := strings.Join(strings.Fields(strings.ReplaceAll(command, "\n", " ")), " ")
 	return ansi.Truncate(flat, width, "…")

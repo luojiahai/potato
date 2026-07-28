@@ -87,6 +87,12 @@ func focusStyle() lipgloss.Style { return boldStyle.Foreground(lipgloss.Color(ac
 // the detail strip, in the same off-white as the content it heads.
 func titleStyle() lipgloss.Style { return boldStyle.Foreground(lipgloss.Color(textColor)) }
 
+// brand is what the header rule is labelled with. The potato is the app's mark
+// — the same one the README and the repo lead with — and the one piece of
+// colour in the frame that is not potato's own gold, since a terminal paints an
+// emoji from the font and ignores the foreground it is given.
+const brand = "🥔 Potato"
+
 // brandStyle is the app's own name on the header rule — the one label that is
 // neither a region nor a Command, and the only place the accent gold heads a
 // rule rather than marking something you can press.
