@@ -13,7 +13,7 @@
    Name         deploy prod
    Description  Roll out to production
    Command      $ ssh {{host=prod-1}} 'deploy.sh'
-   Arguments    host = prod-1
+   Placeholders host = prod-1
 
 
 

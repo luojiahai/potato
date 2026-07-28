@@ -291,28 +291,47 @@ func (s *listScreen) content(m *Model) []string {
 		rule(width, "", lipglossPlain, ""),
 	}
 
-	if len(results) == 0 {
-		var rows []string
-		if len(m.lib.Commands) == 0 {
-			rows = s.gettingStarted(width - 2)
-		} else {
-			rows = s.noMatch(query, width-2)
-		}
-		return append(top, indent(rows)...)
+	if len(m.lib.Commands) == 0 {
+		return append(top, indent(s.gettingStarted(width-2))...)
 	}
 
 	// Both regions are as fixed as the frame they sit in: the list keeps its
 	// seven rows — padded out rather than handing spare rows down when the
-	// results run short — and the strip's height comes from the frame alone,
-	// so neither a query nor an arrow key can move the strip's rule or the
-	// list's bottom edge.
-	detail := s.detail(m, results, sel, width)
-	budget := max(0, min(listRegionRows, body-len(top)-len(detail)))
-	rows := s.listRows(m, results, sel, budget, width, query)
+	// results run short, holding the no-match note when they run out — and
+	// the strip's height comes from the frame alone, so neither a query nor
+	// an arrow key can move the strip's rule or the list's bottom edge.
+	budget, detailRows := regions(body, len(top))
+	var rows []string
+	var entry *library.Entry
+	if len(results) == 0 {
+		rows = indent(s.noMatch(query, width-2))
+		if len(rows) > budget {
+			rows = rows[:budget]
+		}
+	} else {
+		entry = &results[sel]
+		rows = s.listRows(m, results, sel, budget, width, query)
+	}
+	detail := s.detail(entry, detailRows, width)
 	for len(rows) < budget {
 		rows = append(rows, "")
 	}
 	return append(append(top, rows...), detail...)
+}
+
+// regions splits the frame's body below the top rows between the two fixed
+// regions. The list's rows come first: the strip's content gets what the body
+// leaves after them and the strip's own blank and rule, up to its cap. On a
+// terminal too short for both, the strip is the one to go — below that the
+// list is the only thing worth having.
+func regions(body, top int) (list, detail int) {
+	detail = max(0, min(detailMaxRows, body-top-listRegionRows-2))
+	strip := 0
+	if detail > 0 {
+		strip = detail + 2 // its blank and its rule
+	}
+	list = max(0, min(listRegionRows, body-top-strip))
+	return list, detail
 }
 
 // searchRow is the prompt and the result count on one row — where the search
@@ -351,23 +370,19 @@ func (s *listScreen) searchRow(m *Model, results []library.Entry, width int) str
 // terminal: no query, keystroke or Command can grow or shrink it. The price
 // is blank rows under a short Command, and blank rows cost nothing — they are
 // not fenced in a box, so they read as space rather than as something missing
-// — while a Command too long for the strip is cut with an ellipsis.
-func (s *listScreen) detail(m *Model, results []library.Entry, sel, width int) []string {
-	body := m.bodyHeight()
-	inner := width - 2
-
-	// The list's rows come first: the strip takes what the frame leaves after
-	// the three top rows, the list region, and its own blank and rule, up to
-	// its cap. On a terminal too short for both, the strip is the one to go —
-	// below that the list is the only thing worth having.
-	rows := min(detailMaxRows, body-3-listRegionRows-2)
+// — while a Command too long for the strip is cut with an ellipsis. With no
+// entry to show it keeps its rows and shows nothing, so a query that filters
+// everything out cannot move the rule either.
+func (s *listScreen) detail(entry *library.Entry, rows, width int) []string {
 	if rows < 1 {
 		return nil
 	}
-
-	content := s.detailContent(m, results[sel], inner)
-	if len(content) > rows {
-		content = append(content[:rows-1:rows-1], dimStyle.Render("…"))
+	var content []string
+	if entry != nil {
+		content = s.detailContent(*entry, width-2)
+		if len(content) > rows {
+			content = append(content[:rows-1:rows-1], dimStyle.Render("…"))
+		}
 	}
 	for len(content) < rows {
 		content = append(content, "")
@@ -376,15 +391,26 @@ func (s *listScreen) detail(m *Model, results []library.Entry, sel, width int) [
 	return append([]string{""}, section(width, "", lipglossPlain, "", content)...)
 }
 
+// The detail strip's field labels, named so the gutter can be computed from
+// the set — renaming one cannot silently misalign the column under it.
+const (
+	labelName         = "Name"
+	labelDescription  = "Description"
+	labelCommand      = "Command"
+	labelPlaceholders = "Placeholders"
+)
+
 // detailGutter is the column the detail strip's values hang from: its widest
-// label, Description, and the two columns after it.
-const detailGutter = 13
+// label and the one column after it. One, not two, because the gutter is paid
+// for in value columns: the strip's rows are fixed, so a wider gutter wraps a
+// long Command onto more of them — and off the strip's end.
+var detailGutter = 1 + max(len(labelName), len(labelDescription), len(labelCommand), len(labelPlaceholders))
 
 // detailContent builds the detail strip's rows: what the Command is called,
 // what it is for, what it is, and what it will ask for — each field headed by
 // its label in the shared gutter. When it was last used lives on the list row
 // instead, where it can be compared against its neighbours.
-func (s *listScreen) detailContent(m *Model, entry library.Entry, inner int) []string {
+func (s *listScreen) detailContent(entry library.Entry, inner int) []string {
 	value := max(1, inner-detailGutter)
 	var content []string
 	add := func(label string, rows []string) {
@@ -402,17 +428,17 @@ func (s *listScreen) detailContent(m *Model, entry library.Entry, inner int) []s
 	for _, line := range wrapLines(entry.Name, value) {
 		name = append(name, titleStyle().Render(line))
 	}
-	add("Name", name)
+	add(labelName, name)
 	if entry.Description != nil && *entry.Description != "" {
 		var desc []string
 		for _, line := range wrapLines(*entry.Description, value) {
 			desc = append(desc, dimStyle.Render(line))
 		}
-		add("Description", desc)
+		add(labelDescription, desc)
 	}
-	add("Command", commandBlock(entry.Command, value))
+	add(labelCommand, commandBlock(entry.Command, value))
 	if ps := placeholders.Parse(entry.Command); len(ps) > 0 {
-		add("Arguments", placeholderRows(ps, value))
+		add(labelPlaceholders, placeholderRows(ps, value))
 	}
 	return content
 }
@@ -439,7 +465,7 @@ const listRegionRows = 7
 
 // detailMaxRows caps the detail strip's content: ten rows is the fullest
 // entry it is asked to carry — a name, a description, a command wrapped over
-// three rows, and five arguments.
+// three rows, and five Placeholders.
 const detailMaxRows = 10
 
 func (s *listScreen) columns(m *Model, results []library.Entry, width int) rowLayout {
@@ -491,11 +517,6 @@ func (s *listScreen) listRows(m *Model, results []library.Entry, sel, rows, widt
 		return out
 	}
 
-	// Reserving both counters costs two of the rows there are to give. Below
-	// three, that is all of them but one, and the counters would be spending
-	// the budget the list rows and the detail strip under them were counted
-	// into — the strip would lose its last line to a row saying how many lines
-	// were not shown.
 	// Reserving both counters costs two of the rows there are to give. Below
 	// three, that is all of them but one, and the counters would be spending
 	// the budget the list rows and the detail strip under them were counted

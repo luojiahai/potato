@@ -14,7 +14,7 @@
    Command      $ rsync -avz --delete --exclude '.git' --exclude 'node_modules'
                 --exclude '*.log' --partial --progress -e 'ssh -p {{port=22}}'
                 ./{{src=dist}}/ {{user=deploy}}@{{host}}:/srv/{{app}}/releases/
-   Arguments    port = 22
+   Placeholders port = 22
                 src = dist
                 user = deploy
                 host

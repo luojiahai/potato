@@ -139,12 +139,14 @@ func TestFrames(t *testing.T) {
 		migrated bool
 		lib      *library.Library
 	}{
-		// the geometry tiers: the frame is as tall as its content until the
-		// row ceiling stops it, the detail strip yields on a short terminal,
-		// and a row's command preview yields on a narrow one
+		// the geometry tiers: the frame's height comes from the terminal alone
+		// — capped at the row ceiling on a tall one, and squeezed on a short
+		// one until the detail strip is the one to go — and a row's command
+		// preview yields on a narrow one. Sixteen rows is the shortest
+		// terminal that still carries the strip.
 		{name: "list-40x80-capped", rows: 40, columns: 80, lib: ptr(longLibrary())},
 		{name: "list-24x80", rows: 24, columns: 80},
-		{name: "list-13x80-detail", rows: 13, columns: 80},
+		{name: "list-16x80-detail", rows: 16, columns: 80},
 		{name: "list-12x80-nodetail", rows: 12, columns: 80},
 		{name: "list-40x50-narrow", rows: 40, columns: 50},
 		{name: "list-24x50-narrow", rows: 24, columns: 50},
@@ -290,12 +292,12 @@ func itoa(n int) string {
 }
 
 // The detail strip is where you check what a Command will ask you for before
-// you press Enter, so a Command with five arguments has to show five.
+// you press Enter, so a Command with five Placeholders has to show all five.
 //
 // The goldens would not catch a truncated strip — they are regenerated from
 // the renderer, so a truncation is only a diff against the frame before it,
 // and it passes its own test either way. The check has to be explicit here.
-func TestTheDetailStripShowsEveryArgument(t *testing.T) {
+func TestTheDetailStripShowsEveryPlaceholder(t *testing.T) {
 	deps := fixtureDeps()
 	deps.Library = longCommandLibrary()
 	deps.State = state.State{}
@@ -303,8 +305,11 @@ func TestTheDetailStripShowsEveryArgument(t *testing.T) {
 	m.SetSize(80, 24)
 
 	frame := render(t, m)
+	// Matched at the row's end: a Placeholder row holds nothing after its
+	// value, and the first one sits a single space after the gutter's widest
+	// label, so a leading-space match would miss it.
 	for _, arg := range []string{"port = 22", "src = dist", "user = deploy", "host", "app"} {
-		if !strings.Contains(frame, "  "+arg) {
+		if !strings.Contains(frame, arg+"\n") {
 			t.Errorf("the strip does not list %q:\n%s", arg, frame)
 		}
 	}
@@ -383,13 +388,15 @@ func TestTheListKeepsWithinItsRowBudget(t *testing.T) {
 		if !strings.Contains(frame, "deploy prod") {
 			continue // too short for a list at all
 		}
-		// The strip names the selected Command, so its rule is the marker. An
-		// overrun cuts from the bottom of the frame, so what to check for is
-		// the strip's *last* row — the arguments — not its first.
-		if !strings.Contains(frame, "─ deploy prod ") {
+		// The strip heads its first field with the Name label, so that label
+		// is the marker that the strip is present. An overrun cuts from the
+		// bottom of the frame, so what to check for is the strip's *last* row
+		// — the Placeholders, or the ellipsis a strip too short for the whole
+		// entry ends in — not its first.
+		if !strings.Contains(frame, labelName) {
 			continue // too short for the strip
 		}
-		if !strings.Contains(frame, "host = prod-1") {
+		if !strings.Contains(frame, "host = prod-1") && !strings.Contains(frame, "…") {
 			t.Errorf("%d rows: the list overran and the strip lost its last row:\n%s", rows, frame)
 		}
 	}
