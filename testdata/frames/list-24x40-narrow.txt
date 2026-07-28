@@ -10,11 +10,11 @@
 
 
  ──────────────────────────────────────
-   Name         deploy prod
-   Description  Roll out to production
-   Command      $ ssh {{host=prod-1}}
-                'deploy.sh'
-   Placeholders host = prod-1
+   Name          deploy prod
+   Description   Roll out to production
+   Command       $ ssh {{host=prod-1}}
+                 'deploy.sh'
+   Placeholders  host = prod-1
 
 
 

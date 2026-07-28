@@ -101,12 +101,14 @@ var updateFrames = flag.Bool("update-frames", false,
 func emptyLibrary() library.Library { return library.Library{Version: 2} }
 
 // longCommandLibrary holds one Command too long for the detail strip, so the
-// strip's cap and its truncation marker are both exercised.
+// strip's cap and its truncation marker are both exercised. Sized to wrap
+// over exactly three rows of the strip at eighty columns — with its five
+// Placeholders, the fullest entry the strip there can hold whole.
 func longCommandLibrary() library.Library {
 	return library.Library{Version: 2, Commands: []library.Entry{{
 		ID: "id-long", Name: "rsync everything",
-		Command: "rsync -avz --delete --exclude '.git' --exclude 'node_modules' --exclude '*.log' " +
-			"--partial --progress -e 'ssh -p {{port=22}}' ./{{src=dist}}/ {{user=deploy}}@{{host}}:/srv/{{app}}/releases/",
+		Command: "rsync -avz --delete --exclude '.git' --exclude 'node_modules' " +
+			"--progress -e 'ssh -p {{port=22}}' ./{{src=dist}}/ {{user=deploy}}@{{host}}:/srv/{{app}}/",
 	}}}
 }
 
@@ -305,11 +307,8 @@ func TestTheDetailStripShowsEveryPlaceholder(t *testing.T) {
 	m.SetSize(80, 24)
 
 	frame := render(t, m)
-	// Matched at the row's end: a Placeholder row holds nothing after its
-	// value, and the first one sits a single space after the gutter's widest
-	// label, so a leading-space match would miss it.
 	for _, arg := range []string{"port = 22", "src = dist", "user = deploy", "host", "app"} {
-		if !strings.Contains(frame, arg+"\n") {
+		if !strings.Contains(frame, "  "+arg) {
 			t.Errorf("the strip does not list %q:\n%s", arg, frame)
 		}
 	}

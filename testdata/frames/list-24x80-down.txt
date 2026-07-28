@@ -10,9 +10,9 @@
 
 
  ──────────────────────────────────────────────────────────────────────────────
-   Name         list ports
-   Description  Show listening processes
-   Command      $ lsof -iTCP -sTCP:LISTEN
+   Name          list ports
+   Description   Show listening processes
+   Command       $ lsof -iTCP -sTCP:LISTEN
 
 
 

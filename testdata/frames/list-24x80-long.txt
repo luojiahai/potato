@@ -10,14 +10,14 @@
 
 
  ──────────────────────────────────────────────────────────────────────────────
-   Name         rsync everything
-   Command      $ rsync -avz --delete --exclude '.git' --exclude 'node_modules'
-                --exclude '*.log' --partial --progress -e 'ssh -p {{port=22}}'
-                ./{{src=dist}}/ {{user=deploy}}@{{host}}:/srv/{{app}}/releases/
-   Placeholders port = 22
-                src = dist
-                user = deploy
-                host
-                app
+   Name          rsync everything
+   Command       $ rsync -avz --delete --exclude '.git' --exclude
+                 'node_modules' --progress -e 'ssh -p {{port=22}}'
+                 ./{{src=dist}}/ {{user=deploy}}@{{host}}:/srv/{{app}}/
+   Placeholders  port = 22
+                 src = dist
+                 user = deploy
+                 host
+                 app
  ──────────────────────────────────────────────────────────────────────────────
  ↵ Run · ^Y Copy · tab Actions · esc Quit

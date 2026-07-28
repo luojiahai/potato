@@ -10,8 +10,8 @@
    ↓ 10 more
 
  ──────────────────────────────────────────────────────────────────────────────
-   Name         command number 0
-   Command      $ echo 0
+   Name          command number 0
+   Command       $ echo 0
 
 
 

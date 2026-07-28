@@ -401,10 +401,10 @@ const (
 )
 
 // detailGutter is the column the detail strip's values hang from: its widest
-// label and the one column after it. One, not two, because the gutter is paid
-// for in value columns: the strip's rows are fixed, so a wider gutter wraps a
-// long Command onto more of them — and off the strip's end.
-var detailGutter = 1 + max(len(labelName), len(labelDescription), len(labelCommand), len(labelPlaceholders))
+// label and the two columns after it. The gap is not free — the strip's rows
+// are fixed, so every gutter column narrows the values and wraps a long
+// Command that much sooner.
+var detailGutter = 2 + max(len(labelName), len(labelDescription), len(labelCommand), len(labelPlaceholders))
 
 // detailContent builds the detail strip's rows: what the Command is called,
 // what it is for, what it is, and what it will ask for — each field headed by
