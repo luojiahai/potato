@@ -15,7 +15,6 @@ import (
 	"github.com/luojiahai/potato/internal/clipboard"
 	"github.com/luojiahai/potato/internal/importer"
 	"github.com/luojiahai/potato/internal/library"
-	"github.com/luojiahai/potato/internal/migrate"
 	"github.com/luojiahai/potato/internal/paths"
 	"github.com/luojiahai/potato/internal/shell"
 	"github.com/luojiahai/potato/internal/state"
@@ -51,20 +50,18 @@ func runTUI(outFile string, hasOut bool) {
 	if !term.IsTerminal(os.Stdin.Fd()) {
 		die("the potato TUI needs a terminal")
 	}
-	// Migration runs synchronously here, before the alt-screen switch and the
-	// first render, so the list is populated from the first frame; a footer
-	// toast (via Deps.Migrated) signals the upgrade in-TUI.
-	loaded, err := migrate.Load(paths.Commands(), paths.State())
+	lib, err := library.Load(paths.Commands())
 	if err != nil {
 		die(err.Error())
 	}
 
+	// The saves hand their error back rather than swallowing it, so the TUI can
+	// say a write failed instead of flashing "Saved" over one that did not.
 	handoff, err := tui.Run(tui.Deps{
-		Library:     loaded.Library,
-		State:       loaded.State,
-		Migrated:    loaded.Migrated,
-		SaveLibrary: func(lib library.Library) { _ = library.Save(paths.Commands(), lib) },
-		SaveState:   func(s state.State) { _ = state.Save(paths.State(), s) },
+		Library:     lib,
+		State:       state.Load(paths.State()),
+		SaveLibrary: func(lib library.Library) error { return library.Save(paths.Commands(), lib) },
+		SaveState:   func(s state.State) error { return state.Save(paths.State(), s) },
 		Copy:        clipboard.Copy,
 		Now:         time.Now,
 	})
@@ -114,9 +111,9 @@ func runImport(args []string) {
 		die(fmt.Sprintf("cannot read %s: %s", source, err))
 	}
 
-	// Version-strict: a still-v1 incoming file fail-louds ("unsupported
-	// version 1"); senders must be on v2 (their own library auto-migrates and
-	// they share that). Only our own library upgrades on load, below.
+	// Version-strict: a v1 incoming file fail-louds ("unsupported version 1").
+	// So does a v1 library of our own — potato has never released a version that
+	// wrote one. See docs/adr/0001-reject-v1-libraries.md.
 	theirs, err := library.Parse(string(text), source)
 	if err != nil {
 		die(err.Error())
@@ -137,15 +134,15 @@ func runImport(args []string) {
 		return
 	}
 
-	loaded, err := migrate.Load(paths.Commands(), paths.State())
+	ours, err := library.Load(paths.Commands())
 	if err != nil {
 		die(err.Error())
 	}
-	if loaded.Migrated {
-		fmt.Fprintln(os.Stderr, "potato: Upgraded your library to v2")
-	}
 
-	result := importer.Merge(loaded.Library, theirs)
+	result, err := importer.Merge(ours, theirs)
+	if err != nil {
+		die(err.Error())
+	}
 	if err := library.Save(paths.Commands(), result.Merged); err != nil {
 		die(err.Error())
 	}

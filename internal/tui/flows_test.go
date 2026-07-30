@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -16,14 +17,30 @@ type recorder struct {
 	libraries []library.Library
 	states    []state.State
 	copied    []string
+	// failWith is what both saves return, so a test can be the adapter that
+	// cannot write. The value is still recorded — a failed save is one that was
+	// attempted.
+	failWith error
+	// failStateWith overrides failWith for the State write alone, so a test can
+	// tell the two failures apart when an action writes both files and both fail.
+	failStateWith error
 }
 
 func harness(t *testing.T) (*Model, *recorder) {
 	t.Helper()
 	rec := &recorder{}
 	deps := fixtureDeps()
-	deps.SaveLibrary = func(lib library.Library) { rec.libraries = append(rec.libraries, lib) }
-	deps.SaveState = func(s state.State) { rec.states = append(rec.states, s) }
+	deps.SaveLibrary = func(lib library.Library) error {
+		rec.libraries = append(rec.libraries, lib)
+		return rec.failWith
+	}
+	deps.SaveState = func(s state.State) error {
+		rec.states = append(rec.states, s)
+		if rec.failStateWith != nil {
+			return rec.failStateWith
+		}
+		return rec.failWith
+	}
 	deps.Copy = func(text string) { rec.copied = append(rec.copied, text) }
 	m := New(deps)
 	m.SetSize(80, 24)
@@ -95,11 +112,16 @@ func TestCtrlYCopiesWithoutHandingOff(t *testing.T) {
 	}
 }
 
-func TestAddCreatesACommandWithAFreshID(t *testing.T) {
+// What the add form is responsible for is the wiring: which field becomes which
+// part of the Draft, that a save is attempted, and that the screen moves on.
+// Whether the Library minted a fresh id and kept its array order is the
+// Library's own promise, tested in library_test.go.
+func TestAddHandsTheFormsFieldsToTheLibrary(t *testing.T) {
 	m, rec := harness(t)
 	press(m, []string{"tab", "a"})
 	edit := m.screen.(*editScreen)
 	edit.inputs[fieldName].SetValue("new one")
+	edit.inputs[fieldDescription].SetValue("a description")
 	edit.inputs[fieldCommand].SetValue("echo new")
 	press(m, []string{"enter"})
 
@@ -107,37 +129,70 @@ func TestAddCreatesACommandWithAFreshID(t *testing.T) {
 		t.Fatalf("saved %d libraries, want 1", len(rec.libraries))
 	}
 	saved := rec.libraries[0]
-	if len(saved.Commands) != 4 {
-		t.Fatalf("got %d commands, want 4", len(saved.Commands))
+	added, ok := findByName(saved, "new one")
+	if !ok {
+		t.Fatalf("the typed name is not in the saved Library: %+v", saved.Commands)
 	}
-	added := saved.Commands[3]
-	if added.Name != "new one" || added.Command != "echo new" {
-		t.Errorf("added = %+v", added)
+	if added.Template != "echo new" {
+		t.Errorf("command = %q, want the command field's value", added.Template)
 	}
-	if added.ID == "" || added.ID == "id-deploy" {
-		t.Errorf("id = %q", added.ID)
+	if added.Description == nil || *added.Description != "a description" {
+		t.Errorf("description = %v, want the description field's value", added.Description)
 	}
 	if _, ok := m.screen.(*listScreen); !ok {
 		t.Errorf("screen = %T, want the list", m.screen)
 	}
 }
 
-func TestEditRenameKeepsTheIDAndTheSlot(t *testing.T) {
+func TestEditSavesTheRenamedName(t *testing.T) {
 	m, rec := harness(t)
 	press(m, []string{"tab", "e"})
 	m.screen.(*editScreen).inputs[fieldName].SetValue("renamed")
 	press(m, []string{"enter"})
 
-	saved := rec.libraries[0]
-	if saved.Commands[0].ID != "id-deploy" {
-		t.Errorf("id changed: %q", saved.Commands[0].ID)
+	if len(rec.libraries) != 1 {
+		t.Fatalf("saved %d libraries, want 1", len(rec.libraries))
 	}
-	if saved.Commands[0].Name != "renamed" {
-		t.Errorf("name = %q", saved.Commands[0].Name)
+	command, ok := library.Find(rec.libraries[0], "id-deploy")
+	if !ok {
+		t.Fatal("the edited Command is gone from the saved Library")
 	}
-	if len(saved.Commands) != 3 {
-		t.Errorf("slot not kept: %d commands", len(saved.Commands))
+	if command.Name != "renamed" {
+		t.Errorf("name = %q", command.Name)
 	}
+}
+
+// A save that failed must not be reported as one that worked. The edit is kept
+// so nothing the user typed is lost, and the flash says it is not on disk.
+func TestAFailedSaveSaysSoInsteadOfFlashingSaved(t *testing.T) {
+	m, rec := harness(t)
+	rec.failWith = errors.New("read-only file system")
+	press(m, []string{"tab", "a"})
+	edit := m.screen.(*editScreen)
+	edit.inputs[fieldName].SetValue("doomed")
+	edit.inputs[fieldCommand].SetValue("echo x")
+	press(m, []string{"enter"})
+
+	frame := render(t, m)
+	if strings.Contains(frame, "Added") {
+		t.Errorf("a failed save flashed success:\n%s", frame)
+	}
+	if !strings.Contains(frame, "Not saved") || !strings.Contains(frame, "read-only file system") {
+		t.Errorf("the failure is not reported:\n%s", frame)
+	}
+	// the edit survives in memory, so the user can retry rather than retype
+	if _, ok := findByName(m.lib, "doomed"); !ok {
+		t.Error("a failed save also threw away the edit")
+	}
+}
+
+func findByName(lib library.Library, name string) (library.Command, bool) {
+	for _, command := range lib.Commands {
+		if command.Name == name {
+			return command, true
+		}
+	}
+	return library.Command{}, false
 }
 
 func TestEditRefusesADuplicateName(t *testing.T) {
@@ -230,8 +285,8 @@ func TestDeleteConfirmRemovesTheCommand(t *testing.T) {
 	if len(rec.libraries) != 1 {
 		t.Fatalf("saved %d libraries, want 1", len(rec.libraries))
 	}
-	for _, entry := range rec.libraries[0].Commands {
-		if entry.ID == "id-deploy" {
+	for _, command := range rec.libraries[0].Commands {
+		if command.ID == "id-deploy" {
 			t.Error("the Command was not removed")
 		}
 	}
@@ -450,13 +505,43 @@ func TestEscapeQuitsWithoutHandingOff(t *testing.T) {
 	}
 }
 
-func TestMigratedLaunchShowsAToast(t *testing.T) {
-	deps := fixtureDeps()
-	deps.Migrated = true
-	m := New(deps)
-	m.SetSize(80, 24)
-	m.Init()
-	if !strings.Contains(render(t, m), "Upgraded your library to v2") {
-		t.Error("no migration toast")
+// Deleting a Command drops its State command too. State is disposable, so this
+// costs nothing when it is missed — which is exactly why it was missed, and why
+// it is worth pinning: the command used to survive in state.json forever.
+func TestDeleteAlsoForgetsTheCommandsState(t *testing.T) {
+	m, rec := harness(t)
+	if _, ok := m.st["id-deploy"]; !ok {
+		t.Fatal("the fixture has no State for the Command about to be deleted")
+	}
+	press(m, []string{"tab", "d", "y"})
+
+	if len(rec.states) == 0 {
+		t.Fatal("no State was saved")
+	}
+	if _, ok := rec.states[len(rec.states)-1]["id-deploy"]; ok {
+		t.Error("the deleted Command's State entry was kept")
+	}
+}
+
+// A delete writes both files, and when both fail the Library's failure is the
+// one the user is shown: commands.json is their data, state.json is a cache
+// CONTEXT.md calls safe to delete. Raising each flash as its write returned put
+// the *last* failure's text on screen — so the report named the cache and left
+// the user thinking their Command was gone.
+func TestADeleteThatFailsBothWritesReportsTheLibraryNotTheCache(t *testing.T) {
+	m, rec := harness(t)
+	rec.failWith = errors.New("commands.json is read-only")
+	rec.failStateWith = errors.New("state.json is read-only")
+	press(m, []string{"tab", "d", "y"})
+
+	frame := render(t, m)
+	if strings.Contains(frame, "Deleted") {
+		t.Errorf("a delete that wrote nothing flashed success:\n%s", frame)
+	}
+	if !strings.Contains(frame, "commands.json is read-only") {
+		t.Errorf("the Library's failure is not the one reported:\n%s", frame)
+	}
+	if strings.Contains(frame, "state.json is read-only") {
+		t.Errorf("the cache's failure won over the Library's:\n%s", frame)
 	}
 }

@@ -93,6 +93,21 @@ func RecordUse(s State, id string, args map[string]string, now time.Time) State 
 	return next
 }
 
+// Forget drops a Command's cache entry, for when the Command itself is gone.
+// Nothing breaks if it is never called — State is disposable and an orphaned
+// key is only dead weight — but a Library and a State that disagree about which
+// Commands exist is dead weight that accumulates for as long as potato is
+// installed.
+func Forget(s State, id string) State {
+	next := State{}
+	for key, value := range s {
+		if key != id {
+			next[key] = value
+		}
+	}
+	return next
+}
+
 // Timestamp matches JavaScript's Date#toISOString.
 func Timestamp(t time.Time) string {
 	return t.UTC().Format("2006-01-02T15:04:05.000Z")

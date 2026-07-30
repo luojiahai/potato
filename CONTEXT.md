@@ -12,6 +12,10 @@ _Avoid_: snippet, alias, entry
 The user's full set of Commands, stored as the single portable file `~/.potato/commands.json`. Copying the file is sharing the Library — there is no separate export.
 _Avoid_: database, collection, config
 
+**Draft**:
+A Command's content without its identity — a name, an optional description, and a template string. What the add/edit form holds, and what the Library accepts when adding or updating a Command. A Draft becomes a Command when the Library gives it an id.
+_Avoid_: form (that's the screen), input, params, fields (the edit screen's own constants)
+
 **Placeholder**:
 A `{{name}}` or `{{name=default}}` slot in a Command's template, filled in via the arg form before hand-off.
 _Avoid_: variable, parameter, argument (an *argument* is the value supplied for a Placeholder)

@@ -71,15 +71,15 @@ func NameMatchIndices(query, name string) (map[int]bool, bool) {
 	return indices, true
 }
 
-func Commands(commands []library.Entry, s state.State, query string) []library.Entry {
+func Commands(commands []library.Command, s state.State, query string) []library.Command {
 	if strings.TrimSpace(query) == "" {
-		used := []library.Entry{}
-		rest := []library.Entry{}
-		for _, entry := range commands {
-			if s[entry.ID].LastUsedAt != "" {
-				used = append(used, entry)
+		used := []library.Command{}
+		rest := []library.Command{}
+		for _, command := range commands {
+			if s[command.ID].LastUsedAt != "" {
+				used = append(used, command)
 			} else {
-				rest = append(rest, entry)
+				rest = append(rest, command)
 			}
 		}
 		sort.SliceStable(used, func(i, j int) bool {
@@ -89,34 +89,34 @@ func Commands(commands []library.Entry, s state.State, query string) []library.E
 	}
 
 	type scored struct {
-		entry library.Entry
-		score float64
+		command library.Command
+		score   float64
 	}
 	out := []scored{}
-	for _, entry := range commands {
+	for _, command := range commands {
 		best := math.Inf(-1)
-		if score, ok := subsequenceScore(query, entry.Name); ok {
+		if score, ok := subsequenceScore(query, command.Name); ok {
 			best = math.Max(best, score*100)
 		}
-		if entry.Description != nil {
-			if score, ok := subsequenceScore(query, *entry.Description); ok {
+		if command.Description != nil {
+			if score, ok := subsequenceScore(query, *command.Description); ok {
 				best = math.Max(best, score*10)
 			}
 		}
-		if score, ok := subsequenceScore(query, entry.Command); ok {
+		if score, ok := subsequenceScore(query, command.Template); ok {
 			best = math.Max(best, score)
 		}
 		if !math.IsInf(best, -1) {
-			out = append(out, scored{entry: entry, score: best})
+			out = append(out, scored{command: command, score: best})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].score > out[j].score })
 
-	entries := make([]library.Entry, 0, len(out))
+	list := make([]library.Command, 0, len(out))
 	for _, s := range out {
-		entries = append(entries, s.entry)
+		list = append(list, s.command)
 	}
-	return entries
+	return list
 }
 
 func parseTime(s string) time.Time {
