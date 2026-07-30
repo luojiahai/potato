@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luojiahai/potato/internal/library"
@@ -21,8 +20,14 @@ type argsScreen struct {
 	command  string
 	ps       []placeholders.Placeholder
 	lastArgs map[string]string
-	inputs   []textinput.Model
-	focus    int
+	form     form
+}
+
+// argPaint carries the selection fill across a focused row's value — the same
+// bar the list screen marks its selection with, rather than a second focus
+// language for the same idea.
+func argPaint(value string, focused bool) []run {
+	return []run{{text: value, style: onSelected(textStyle, focused)}}
 }
 
 func newArgsScreen(m *Model, command *library.Command) *argsScreen {
@@ -34,69 +39,45 @@ func newArgsScreen(m *Model, command *library.Command) *argsScreen {
 		ps:       ps,
 		lastArgs: m.st[command.ID].Args,
 	}
+	fields := make([]field, 0, len(ps))
 	for _, p := range ps {
-		input := newField()
+		f := newField(fieldLine)
+		f.paint = argPaint
 		// pre-fill precedence: last value > default > empty (spec §2)
 		if value, ok := s.lastArgs[p.Name]; ok {
-			input.SetValue(value)
+			f.SetValue(value)
 		} else if p.HasDefault {
-			input.SetValue(p.Default)
+			f.SetValue(p.Default)
 		}
-		s.inputs = append(s.inputs, input)
+		fields = append(fields, f)
 	}
-	if len(s.inputs) > 0 {
-		s.inputs[0].Focus()
-	}
+	s.form = newForm(fields...)
 	return s
 }
 
 func (s *argsScreen) values() map[string]string {
 	out := map[string]string{}
 	for i, p := range s.ps {
-		out[p.Name] = s.inputs[i].Value()
+		out[p.Name] = s.form.Field(i).Value()
 	}
 	return out
 }
 
-func (s *argsScreen) setFocus(i int) {
-	if len(s.inputs) == 0 {
-		return
-	}
-	s.inputs[s.focus].Blur()
-	s.focus = ((i % len(s.inputs)) + len(s.inputs)) % len(s.inputs)
-	s.inputs[s.focus].Focus()
-}
-
+// update claims the screen's own three verbs; the ring and the typing are the
+// Form's.
 func (s *argsScreen) update(m *Model, msg tea.Msg) tea.Cmd {
-	keyMsg, ok := msg.(tea.KeyPressMsg)
-	if !ok {
-		return s.forward(msg)
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		switch {
+		case key.Matches(keyMsg, keymap.args.Back):
+			m.screen = newListScreen(m)
+			return nil
+		case key.Matches(keyMsg, keymap.args.Run):
+			return m.run(s.id, s.values())
+		case key.Matches(keyMsg, keymap.args.Copy):
+			return m.copy(s.id, s.values())
+		}
 	}
-	switch {
-	case key.Matches(keyMsg, keymap.args.Back):
-		m.screen = newListScreen(m)
-		return nil
-	case key.Matches(keyMsg, keymap.args.Run):
-		return m.run(s.id, s.values())
-	case key.Matches(keyMsg, keymap.args.Copy):
-		return m.copy(s.id, s.values())
-	case key.Matches(keyMsg, keymap.form.Next):
-		s.setFocus(s.focus + 1)
-		return nil
-	case key.Matches(keyMsg, keymap.form.Prev):
-		s.setFocus(s.focus - 1)
-		return nil
-	}
-	return s.forward(msg)
-}
-
-func (s *argsScreen) forward(msg tea.Msg) tea.Cmd {
-	if len(s.inputs) == 0 {
-		return nil
-	}
-	var cmd tea.Cmd
-	s.inputs[s.focus], cmd = s.inputs[s.focus].Update(msg)
-	return cmd
+	return s.form.Update(msg)
 }
 
 func (s *argsScreen) keys(*Model) []footerKey {
@@ -123,7 +104,7 @@ func (s *argsScreen) labelWidth() int {
 // leading spaces would fall outside the fill and break the bar.
 func (s *argsScreen) row(i, width int, on bool) string {
 	p := s.ps[i]
-	focused := i == s.focus
+	focused := i == s.form.Focused()
 	inner := max(1, width-2)
 
 	hint := ""
@@ -146,8 +127,7 @@ func (s *argsScreen) row(i, width int, on bool) string {
 	}
 	valueWidth = max(1, valueWidth-hintWidth)
 
-	value, caret := windowValue(s.inputs[i].Value(), s.inputs[i].Position(), valueWidth, focused)
-	rows, _ := wrapStyledHard([]run{{text: value, style: onSelected(textStyle, focused)}}, valueWidth, caret, on)
+	rows, _ := s.form.Field(i).Rows(valueWidth, on)
 	rendered := rows[0]
 	// Measured on the rendered run, not the value: a caret parked past the
 	// last character occupies a cell of its own, and charging the gap for the
@@ -163,27 +143,6 @@ func (s *argsScreen) row(i, width int, on bool) string {
 	return out
 }
 
-// windowValue slides a single-row value so the caret stays on screen, the way
-// a one-line field scrolls rather than wraps.
-func windowValue(value string, pos, width int, focused bool) (string, int) {
-	rs := []rune(value)
-	if !focused {
-		if len(rs) <= width {
-			return value, -1
-		}
-		return string(rs[:width]), -1
-	}
-	// One column is held back for the caret, which needs a cell of its own
-	// once it is parked past the last character.
-	width = max(1, width-1)
-	caret := min(pos, len(rs))
-	start := 0
-	if caret >= width {
-		start = caret - width + 1
-	}
-	return string(rs[start:min(len(rs), start+width)]), caret - start
-}
-
 func (s *argsScreen) view(m *Model) []string {
 	width := m.innerWidth()
 
@@ -195,14 +154,7 @@ func (s *argsScreen) view(m *Model) []string {
 
 	// The filled-in values are the only part of the preview the user just
 	// decided, so they carry the highlight and the rest reads as plain text.
-	preview := []run{{text: "$ ", style: dimStyle}}
-	for _, seg := range placeholders.RenderSegments(s.command, s.values()) {
-		style := textStyle
-		if seg.Flag {
-			style = highlightStyle.Bold(true)
-		}
-		preview = append(preview, run{text: seg.Text, style: style})
-	}
+	preview := append([]run{{text: "$ ", style: dimStyle}}, renderRuns(s.command, s.values())...)
 
 	// `will run` sits directly under the arg rows it is the result of, rather
 	// than absorbing the free height the way the old panel did — a sixteen-row

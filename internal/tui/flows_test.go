@@ -82,10 +82,9 @@ func TestEnterOnATemplatedCommandOpensTheArgForm(t *testing.T) {
 
 func TestArgFormRunsWithTheSuppliedValues(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"enter"}) // open the form for 'deploy prod'
-	args := m.screen.(*argsScreen)
-	args.inputs[0].SetValue("prod-9")
-	press(m, []string{"enter"})
+	// The arg arrives pre-filled from State, so this is what changing it looks
+	// like: clear the field, type over it, run.
+	press(m, []string{"enter", "ctrl+u", "prod-9", "enter"})
 
 	if m.Handoff() != "ssh prod-9 'deploy.sh'" {
 		t.Errorf("handoff = %q", m.Handoff())
@@ -118,12 +117,8 @@ func TestCtrlYCopiesWithoutHandingOff(t *testing.T) {
 // Library's own promise, tested in library_test.go.
 func TestAddHandsTheFormsFieldsToTheLibrary(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "a"})
-	edit := m.screen.(*editScreen)
-	edit.inputs[fieldName].SetValue("new one")
-	edit.inputs[fieldDescription].SetValue("a description")
-	edit.inputs[fieldCommand].SetValue("echo new")
-	press(m, []string{"enter"})
+	press(m, []string{"tab", "a",
+		"new one", "tab", "a description", "tab", "echo new", "enter"})
 
 	if len(rec.libraries) != 1 {
 		t.Fatalf("saved %d libraries, want 1", len(rec.libraries))
@@ -146,9 +141,7 @@ func TestAddHandsTheFormsFieldsToTheLibrary(t *testing.T) {
 
 func TestEditSavesTheRenamedName(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "e"})
-	m.screen.(*editScreen).inputs[fieldName].SetValue("renamed")
-	press(m, []string{"enter"})
+	press(m, []string{"tab", "e", "ctrl+u", "renamed", "enter"})
 
 	if len(rec.libraries) != 1 {
 		t.Fatalf("saved %d libraries, want 1", len(rec.libraries))
@@ -167,11 +160,7 @@ func TestEditSavesTheRenamedName(t *testing.T) {
 func TestAFailedSaveSaysSoInsteadOfFlashingSaved(t *testing.T) {
 	m, rec := harness(t)
 	rec.failWith = errors.New("read-only file system")
-	press(m, []string{"tab", "a"})
-	edit := m.screen.(*editScreen)
-	edit.inputs[fieldName].SetValue("doomed")
-	edit.inputs[fieldCommand].SetValue("echo x")
-	press(m, []string{"enter"})
+	press(m, []string{"tab", "a", "doomed", "tab", "tab", "echo x", "enter"})
 
 	frame := render(t, m)
 	if strings.Contains(frame, "Added") {
@@ -197,11 +186,7 @@ func findByName(lib library.Library, name string) (library.Command, bool) {
 
 func TestEditRefusesADuplicateName(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "a"})
-	edit := m.screen.(*editScreen)
-	edit.inputs[fieldName].SetValue("list ports")
-	edit.inputs[fieldCommand].SetValue("echo x")
-	press(m, []string{"enter"})
+	press(m, []string{"tab", "a", "list ports", "tab", "tab", "echo x", "enter"})
 
 	if len(rec.libraries) != 0 {
 		t.Error("a duplicate name was saved")
@@ -349,7 +334,7 @@ func TestCtrlAAndCtrlEAreLineStartAndEndInTheSearchField(t *testing.T) {
 	if _, still := m.screen.(*listScreen); !still {
 		t.Fatalf("^A in the search field opened %T", m.screen)
 	}
-	if got := list.input.Position(); got != 0 {
+	if got := list.query.Position(); got != 0 {
 		t.Errorf("^A left the caret at %d, want line start", got)
 	}
 
@@ -357,11 +342,11 @@ func TestCtrlAAndCtrlEAreLineStartAndEndInTheSearchField(t *testing.T) {
 	if _, still := m.screen.(*listScreen); !still {
 		t.Fatalf("^E in the search field opened %T", m.screen)
 	}
-	if got, want := list.input.Position(), len("ports"); got != want {
+	if got, want := list.query.Position(), len("ports"); got != want {
 		t.Errorf("^E left the caret at %d, want %d", got, want)
 	}
-	if list.input.Value() != "ports" {
-		t.Errorf("the query changed under a cursor motion: %q", list.input.Value())
+	if list.query.Value() != "ports" {
+		t.Errorf("the query changed under a cursor motion: %q", list.query.Value())
 	}
 }
 
@@ -373,13 +358,12 @@ func TestCtrlAIsLineStartInTheEditor(t *testing.T) {
 	if !ok {
 		t.Fatalf("`a` on the list screen opened %T, want the editor", m.screen)
 	}
-	edit.inputs[fieldName].SetValue("abc")
-	press(m, []string{"ctrl+a"})
+	press(m, []string{"abc", "ctrl+a"})
 	if _, still := m.screen.(*editScreen); !still {
 		t.Fatal("^A inside the editor opened another screen")
 	}
-	if edit.inputs[fieldName].Position() != 0 {
-		t.Errorf("^A did not move to line start: position %d", edit.inputs[fieldName].Position())
+	if edit.form.Field(fieldName).Position() != 0 {
+		t.Errorf("^A did not move to line start: position %d", edit.form.Field(fieldName).Position())
 	}
 }
 
@@ -392,7 +376,7 @@ func TestTabHandsTheKeyboardToTheListAndBack(t *testing.T) {
 	if list.focus != focusList {
 		t.Fatal("tab did not hand the keyboard to the list")
 	}
-	if list.input.Focused() {
+	if list.query.Focused() {
 		t.Error("the search field kept the caret after tab")
 	}
 
@@ -400,12 +384,12 @@ func TestTabHandsTheKeyboardToTheListAndBack(t *testing.T) {
 	if _, still := m.screen.(*listScreen); !still {
 		t.Fatalf("esc from the list zone left for %T, want the search field", m.screen)
 	}
-	if list.focus != focusSearch || !list.input.Focused() {
+	if list.focus != focusSearch || !list.query.Focused() {
 		t.Fatal("esc did not hand the keyboard back to the search field")
 	}
 	press(m, []string{"e"})
-	if list.input.Value() != "e" {
-		t.Errorf("query = %q, want the letter typed rather than an action", list.input.Value())
+	if list.query.Value() != "e" {
+		t.Errorf("query = %q, want the letter typed rather than an action", list.query.Value())
 	}
 }
 
@@ -416,8 +400,8 @@ func TestListFocusIgnoresKeysItDoesNotClaim(t *testing.T) {
 	if _, still := m.screen.(*listScreen); !still {
 		t.Fatalf("an unclaimed key opened %T", m.screen)
 	}
-	if list.input.Value() != "" {
-		t.Errorf("a blurred field took a keystroke: %q", list.input.Value())
+	if list.query.Value() != "" {
+		t.Errorf("a blurred field took a keystroke: %q", list.query.Value())
 	}
 	if list.sel != 1 {
 		t.Errorf("sel = %d, want the selection left where it was", list.sel)
@@ -431,7 +415,7 @@ func TestSearchFocusNeverStealsALetter(t *testing.T) {
 	if _, still := m.screen.(*listScreen); !still {
 		t.Fatalf("a letter typed into the search field opened %T", m.screen)
 	}
-	if got := m.screen.(*listScreen).input.Value(); got != "adeyjkq" {
+	if got := m.screen.(*listScreen).query.Value(); got != "adeyjkq" {
 		t.Errorf("query = %q, want every letter to have reached the field", got)
 	}
 }
@@ -440,8 +424,8 @@ func TestJAndKWalkTheListOnlyInListFocus(t *testing.T) {
 	m, _ := harness(t)
 	press(m, []string{"j"})
 	list := m.screen.(*listScreen)
-	if list.input.Value() != "j" || list.sel != 0 {
-		t.Errorf("j in the search field: query %q, sel %d — want it typed", list.input.Value(), list.sel)
+	if list.query.Value() != "j" || list.sel != 0 {
+		t.Errorf("j in the search field: query %q, sel %d — want it typed", list.query.Value(), list.sel)
 	}
 
 	m, _ = harness(t)
