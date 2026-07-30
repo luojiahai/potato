@@ -84,7 +84,7 @@ func TestArgFormRunsWithTheSuppliedValues(t *testing.T) {
 	m, rec := harness(t)
 	press(m, []string{"enter"}) // open the form for 'deploy prod'
 	args := m.screen.(*argsScreen)
-	args.fields[0].SetValue("prod-9")
+	args.form.Field(0).SetValue("prod-9")
 	press(m, []string{"enter"})
 
 	if m.Handoff() != "ssh prod-9 'deploy.sh'" {
@@ -120,9 +120,9 @@ func TestAddHandsTheFormsFieldsToTheLibrary(t *testing.T) {
 	m, rec := harness(t)
 	press(m, []string{"tab", "a"})
 	edit := m.screen.(*editScreen)
-	edit.fields[fieldName].SetValue("new one")
-	edit.fields[fieldDescription].SetValue("a description")
-	edit.fields[fieldCommand].SetValue("echo new")
+	edit.form.Field(fieldName).SetValue("new one")
+	edit.form.Field(fieldDescription).SetValue("a description")
+	edit.form.Field(fieldCommand).SetValue("echo new")
 	press(m, []string{"enter"})
 
 	if len(rec.libraries) != 1 {
@@ -147,7 +147,7 @@ func TestAddHandsTheFormsFieldsToTheLibrary(t *testing.T) {
 func TestEditSavesTheRenamedName(t *testing.T) {
 	m, rec := harness(t)
 	press(m, []string{"tab", "e"})
-	m.screen.(*editScreen).fields[fieldName].SetValue("renamed")
+	m.screen.(*editScreen).form.Field(fieldName).SetValue("renamed")
 	press(m, []string{"enter"})
 
 	if len(rec.libraries) != 1 {
@@ -169,8 +169,8 @@ func TestAFailedSaveSaysSoInsteadOfFlashingSaved(t *testing.T) {
 	rec.failWith = errors.New("read-only file system")
 	press(m, []string{"tab", "a"})
 	edit := m.screen.(*editScreen)
-	edit.fields[fieldName].SetValue("doomed")
-	edit.fields[fieldCommand].SetValue("echo x")
+	edit.form.Field(fieldName).SetValue("doomed")
+	edit.form.Field(fieldCommand).SetValue("echo x")
 	press(m, []string{"enter"})
 
 	frame := render(t, m)
@@ -199,8 +199,8 @@ func TestEditRefusesADuplicateName(t *testing.T) {
 	m, rec := harness(t)
 	press(m, []string{"tab", "a"})
 	edit := m.screen.(*editScreen)
-	edit.fields[fieldName].SetValue("list ports")
-	edit.fields[fieldCommand].SetValue("echo x")
+	edit.form.Field(fieldName).SetValue("list ports")
+	edit.form.Field(fieldCommand).SetValue("echo x")
 	press(m, []string{"enter"})
 
 	if len(rec.libraries) != 0 {
@@ -373,13 +373,13 @@ func TestCtrlAIsLineStartInTheEditor(t *testing.T) {
 	if !ok {
 		t.Fatalf("`a` on the list screen opened %T, want the editor", m.screen)
 	}
-	edit.fields[fieldName].SetValue("abc")
+	edit.form.Field(fieldName).SetValue("abc")
 	press(m, []string{"ctrl+a"})
 	if _, still := m.screen.(*editScreen); !still {
 		t.Fatal("^A inside the editor opened another screen")
 	}
-	if edit.fields[fieldName].Position() != 0 {
-		t.Errorf("^A did not move to line start: position %d", edit.fields[fieldName].Position())
+	if edit.form.Field(fieldName).Position() != 0 {
+		t.Errorf("^A did not move to line start: position %d", edit.form.Field(fieldName).Position())
 	}
 }
 

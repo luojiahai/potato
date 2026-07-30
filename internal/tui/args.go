@@ -20,8 +20,7 @@ type argsScreen struct {
 	command  string
 	ps       []placeholders.Placeholder
 	lastArgs map[string]string
-	fields   []field
-	focus    int
+	form     form
 }
 
 // argPaint carries the selection fill across a focused row's value — the same
@@ -40,6 +39,7 @@ func newArgsScreen(m *Model, command *library.Command) *argsScreen {
 		ps:       ps,
 		lastArgs: m.st[command.ID].Args,
 	}
+	fields := make([]field, 0, len(ps))
 	for _, p := range ps {
 		f := newField(fieldLine)
 		f.paint = argPaint
@@ -49,60 +49,35 @@ func newArgsScreen(m *Model, command *library.Command) *argsScreen {
 		} else if p.HasDefault {
 			f.SetValue(p.Default)
 		}
-		s.fields = append(s.fields, f)
+		fields = append(fields, f)
 	}
-	if len(s.fields) > 0 {
-		s.fields[0].Focus()
-	}
+	s.form = newForm(fields...)
 	return s
 }
 
 func (s *argsScreen) values() map[string]string {
 	out := map[string]string{}
 	for i, p := range s.ps {
-		out[p.Name] = s.fields[i].Value()
+		out[p.Name] = s.form.Field(i).Value()
 	}
 	return out
 }
 
-func (s *argsScreen) setFocus(i int) {
-	if len(s.fields) == 0 {
-		return
-	}
-	s.fields[s.focus].Blur()
-	s.focus = ((i % len(s.fields)) + len(s.fields)) % len(s.fields)
-	s.fields[s.focus].Focus()
-}
-
+// update claims the screen's own three verbs; the ring and the typing are the
+// Form's.
 func (s *argsScreen) update(m *Model, msg tea.Msg) tea.Cmd {
-	keyMsg, ok := msg.(tea.KeyPressMsg)
-	if !ok {
-		return s.forward(msg)
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		switch {
+		case key.Matches(keyMsg, keymap.args.Back):
+			m.screen = newListScreen(m)
+			return nil
+		case key.Matches(keyMsg, keymap.args.Run):
+			return m.run(s.id, s.values())
+		case key.Matches(keyMsg, keymap.args.Copy):
+			return m.copy(s.id, s.values())
+		}
 	}
-	switch {
-	case key.Matches(keyMsg, keymap.args.Back):
-		m.screen = newListScreen(m)
-		return nil
-	case key.Matches(keyMsg, keymap.args.Run):
-		return m.run(s.id, s.values())
-	case key.Matches(keyMsg, keymap.args.Copy):
-		return m.copy(s.id, s.values())
-	case key.Matches(keyMsg, keymap.form.Next):
-		s.setFocus(s.focus + 1)
-		return nil
-	case key.Matches(keyMsg, keymap.form.Prev):
-		s.setFocus(s.focus - 1)
-		return nil
-	}
-	return s.forward(msg)
-}
-
-func (s *argsScreen) forward(msg tea.Msg) tea.Cmd {
-	if len(s.fields) == 0 {
-		return nil
-	}
-	cmd, _ := s.fields[s.focus].Update(msg)
-	return cmd
+	return s.form.Update(msg)
 }
 
 func (s *argsScreen) keys(*Model) []footerKey {
@@ -129,7 +104,7 @@ func (s *argsScreen) labelWidth() int {
 // leading spaces would fall outside the fill and break the bar.
 func (s *argsScreen) row(i, width int, on bool) string {
 	p := s.ps[i]
-	focused := i == s.focus
+	focused := i == s.form.Focused()
 	inner := max(1, width-2)
 
 	hint := ""
@@ -152,7 +127,7 @@ func (s *argsScreen) row(i, width int, on bool) string {
 	}
 	valueWidth = max(1, valueWidth-hintWidth)
 
-	rows, _ := s.fields[i].Rows(valueWidth, on)
+	rows, _ := s.form.Field(i).Rows(valueWidth, on)
 	rendered := rows[0]
 	// Measured on the rendered run, not the value: a caret parked past the
 	// last character occupies a cell of its own, and charging the gap for the

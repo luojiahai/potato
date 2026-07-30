@@ -41,9 +41,8 @@ var editLabels = [fieldCount]string{
 const commandHint = "Type a command — {{name}} or {{name=default}} become args"
 
 type editScreen struct {
-	id     string // "" = a new Command
-	fields []field
-	focus  int
+	id   string // "" = a new Command
+	form form
 	// tried records a save that was refused. Until then the form stays quiet
 	// about the fields it is still waiting for — a brand-new Command is empty
 	// by definition, and greeting it with "name is required" is noise.
@@ -61,6 +60,7 @@ func newEditScreen(m *Model, command *library.Command) *editScreen {
 			values[fieldDescription] = *command.Description
 		}
 	}
+	fields := make([]field, 0, fieldCount)
 	for i, value := range values {
 		f := newField(fieldWrap)
 		// Only the command field highlights Placeholders — it is the only one
@@ -70,19 +70,13 @@ func newEditScreen(m *Model, command *library.Command) *editScreen {
 			f.hint = commandHint
 		}
 		f.SetValue(value)
-		s.fields = append(s.fields, f)
+		fields = append(fields, f)
 	}
-	s.fields[fieldName].Focus()
+	s.form = newForm(fields...)
 	return s
 }
 
-func (s *editScreen) value(i int) string { return s.fields[i].Value() }
-
-func (s *editScreen) setFocus(i int) {
-	s.fields[s.focus].Blur()
-	s.focus = ((i % len(s.fields)) + len(s.fields)) % len(s.fields)
-	s.fields[s.focus].Focus()
-}
+func (s *editScreen) value(i int) string { return s.form.Field(i).Value() }
 
 // collision is the warning for a name another Command already holds, or "". It
 // is the one problem worth saying before a save is even attempted — the user
@@ -115,37 +109,26 @@ func (s *editScreen) problem(m *Model) string {
 	return ""
 }
 
+// update claims the screen's own two verbs; the ring and the typing are the
+// Form's.
 func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
-	keyMsg, ok := msg.(tea.KeyPressMsg)
-	if !ok {
-		return s.forward(msg)
-	}
-	switch {
-	case key.Matches(keyMsg, keymap.edit.Cancel):
-		m.screen = newListScreen(m)
-		return nil
-	case key.Matches(keyMsg, keymap.edit.Save):
-		if s.problem(m) != "" {
-			// No flash: the inline warning says the same thing and stays put
-			// until the problem is fixed, where a toast would expire while the
-			// field it is about is still empty.
-			s.tried = true
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		switch {
+		case key.Matches(keyMsg, keymap.edit.Cancel):
+			m.screen = newListScreen(m)
 			return nil
+		case key.Matches(keyMsg, keymap.edit.Save):
+			if s.problem(m) != "" {
+				// No flash: the inline warning says the same thing and stays put
+				// until the problem is fixed, where a toast would expire while the
+				// field it is about is still empty.
+				s.tried = true
+				return nil
+			}
+			return s.save(m)
 		}
-		return s.save(m)
-	case key.Matches(keyMsg, keymap.form.Next):
-		s.setFocus(s.focus + 1)
-		return nil
-	case key.Matches(keyMsg, keymap.form.Prev):
-		s.setFocus(s.focus - 1)
-		return nil
 	}
-	return s.forward(msg)
-}
-
-func (s *editScreen) forward(msg tea.Msg) tea.Cmd {
-	cmd, _ := s.fields[s.focus].Update(msg)
-	return cmd
+	return s.form.Update(msg)
 }
 
 // save hands the form's fields to the Library and goes back to the list. The
@@ -188,7 +171,7 @@ func (s *editScreen) keys(*Model) []footerKey {
 
 // label heads a field's section, in accent when the field has the keyboard.
 func (s *editScreen) label(i int) lipgloss.Style {
-	if i == s.focus {
+	if i == s.form.Focused() {
 		return focusStyle()
 	}
 	return sectionStyle()
@@ -210,9 +193,9 @@ func (s *editScreen) view(m *Model) []string {
 	}
 
 	on := m.caretOn()
-	nameRows, _ := s.fields[fieldName].Rows(inner, on)
-	descRows, _ := s.fields[fieldDescription].Rows(inner, on)
-	cmdRows, caretRow := s.fields[fieldCommand].Rows(inner, on)
+	nameRows, _ := s.form.Field(fieldName).Rows(inner, on)
+	descRows, _ := s.form.Field(fieldDescription).Rows(inner, on)
+	cmdRows, caretRow := s.form.Field(fieldCommand).Rows(inner, on)
 
 	nameSec := section(width, editLabels[fieldName], s.label(fieldName), "", nameRows)
 	descSec := section(width, editLabels[fieldDescription], s.label(fieldDescription), "Optional", descRows)
