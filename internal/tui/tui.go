@@ -24,12 +24,18 @@ import (
 )
 
 // Deps are the effects the TUI needs, injected so tests can observe them.
+//
+// The two saves report failure. They used to return nothing, and the closures
+// wiring them to the disk discarded the error — so a Library that failed to
+// write looked exactly like one that wrote, and the edit screen flashed "Saved"
+// on the strength of a call it could not see fail. Now that library.Save also
+// refuses a Library it would not be able to read back, a save has a second way
+// to fail that the user has to hear about.
 type Deps struct {
 	Library     library.Library
 	State       state.State
-	Migrated    bool
-	SaveLibrary func(library.Library)
-	SaveState   func(state.State)
+	SaveLibrary func(library.Library) error
+	SaveState   func(state.State) error
 	Copy        func(string)
 	Now         func() time.Time
 }
@@ -100,14 +106,7 @@ func (m *Model) SetSize(width, height int) {
 	}
 }
 
-func (m *Model) Init() tea.Cmd {
-	// A v1→v2 upgrade happened on this launch: announce it with a transient
-	// footer toast, populated from the first frame (migration ran pre-render).
-	if m.deps.Migrated {
-		return m.setFlash("Upgraded your library to v2", 4000*time.Millisecond)
-	}
-	return nil
-}
+func (m *Model) Init() tea.Cmd { return nil }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var blink tea.Cmd
@@ -219,35 +218,83 @@ func (m *Model) quit() tea.Cmd {
 	return tea.Quit
 }
 
-func (m *Model) rememberUse(id string, args map[string]string) {
-	next := state.RecordUse(m.st, id, args, m.deps.Now())
-	m.st = next
-	if m.deps.SaveState != nil {
-		m.deps.SaveState(next)
-	}
+func (m *Model) rememberUse(id string, args map[string]string) tea.Cmd {
+	return m.updateState(state.RecordUse(m.st, id, args, m.deps.Now()))
 }
 
-func (m *Model) updateLibrary(next library.Library) {
+// updateLibrary and updateState adopt the new value and write it out, returning
+// the flash a failed write earns.
+//
+// The in-memory value is kept either way. A write that failed has not lost the
+// user their edit, and rolling it back would throw away what they typed to
+// report a problem with the disk — so the frame shows the change and the flash
+// says it is not saved yet.
+func (m *Model) updateLibrary(next library.Library) tea.Cmd {
 	m.lib = next
-	if m.deps.SaveLibrary != nil {
-		m.deps.SaveLibrary(next)
+	if m.deps.SaveLibrary == nil {
+		return nil
 	}
+	return m.saveFailed(m.deps.SaveLibrary(next))
+}
+
+func (m *Model) updateState(next state.State) tea.Cmd {
+	m.st = next
+	if m.deps.SaveState == nil {
+		return nil
+	}
+	return m.saveFailed(m.deps.SaveState(next))
+}
+
+// saveFailed is the flash a write error earns, or nil. It outlasts the ordinary
+// flash — "Deleted 'x'" is a confirmation you can miss without cost, and this
+// is not.
+func (m *Model) saveFailed(err error) tea.Cmd {
+	if err == nil {
+		return nil
+	}
+	return m.setFlash("⚠ Not saved: "+err.Error(), 6000*time.Millisecond)
+}
+
+// finish reports an action's outcome: the first failure among the writes it
+// made, or the action's own confirmation. saveFailed has already put a failure
+// on screen, so all this decides is which flash gets to stand.
+//
+// The confirmation is a message rather than a Cmd because setting a flash is a
+// side effect: taking both as Cmds would raise the confirmation on the way to
+// choosing the failure, and the failure would return a command for a flash that
+// had already been overwritten.
+func (m *Model) finish(message string, saves ...tea.Cmd) tea.Cmd {
+	for _, save := range saves {
+		if save != nil {
+			return save
+		}
+	}
+	return m.flashDefault(message)
 }
 
 func (m *Model) run(id string, values map[string]string) tea.Cmd {
+	entry, ok := library.Find(m.lib, id)
+	if !ok {
+		return nil
+	}
+	// A failed State write is not worth reporting here: the hand-off is what
+	// the user came for and potato is closing, so the flash would be erased by
+	// the same frame that draws it. State is disposable; the command is not.
 	m.rememberUse(id, values)
-	entry := library.FindByID(m.lib, id)
 	m.handoff = renderCommand(entry.Command, values)
 	return m.quit()
 }
 
 func (m *Model) copy(id string, values map[string]string) tea.Cmd {
-	m.rememberUse(id, values)
-	entry := library.FindByID(m.lib, id)
+	entry, ok := library.Find(m.lib, id)
+	if !ok {
+		return nil
+	}
+	saved := m.rememberUse(id, values)
 	if m.deps.Copy != nil {
 		m.deps.Copy(renderCommand(entry.Command, values))
 	}
-	return m.flashDefault("Copied to clipboard")
+	return m.finish("Copied to clipboard", saved)
 }
 
 // ---------- program ----------

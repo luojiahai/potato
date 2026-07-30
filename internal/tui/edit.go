@@ -17,7 +17,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/google/uuid"
 	"github.com/luojiahai/potato/internal/library"
 	"github.com/luojiahai/potato/internal/placeholders"
 )
@@ -82,22 +81,15 @@ func (s *editScreen) problem(m *Model) string {
 	if name == "" {
 		return "Name is required"
 	}
-	if s.taken(m, name) {
+	// The rule is the Library's — asking it here is what keeps the warning and
+	// the refusal from being able to disagree. The wording stays potato's.
+	if library.NameTaken(m.lib, name, s.id) {
 		return fmt.Sprintf("'%s' already exists", name)
 	}
 	if strings.TrimSpace(s.value(fieldCommand)) == "" {
 		return "Command is required"
 	}
 	return ""
-}
-
-func (s *editScreen) taken(m *Model, name string) bool {
-	for _, entry := range m.lib.Commands {
-		if entry.Name == name && entry.ID != s.id {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
@@ -134,43 +126,38 @@ func (s *editScreen) forward(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
+// save hands the form's fields to the Library and goes back to the list. The
+// trimming, the id, the slot and the empty-description rule are all the
+// Library's — this knows only which of the two verbs it is performing.
 func (s *editScreen) save(m *Model) tea.Cmd {
-	name := strings.TrimSpace(s.value(fieldName))
-	command := s.value(fieldCommand)
-	description := strings.TrimSpace(s.value(fieldDescription))
+	draft := library.Draft{
+		Name:        s.value(fieldName),
+		Description: s.value(fieldDescription),
+		Command:     s.value(fieldCommand),
+	}
 
-	next := m.lib
+	var (
+		next library.Library
+		err  error
+	)
+	verb := "Saved"
 	if s.id == "" {
-		entry := library.Entry{ID: uuid.NewString(), Name: name, Command: command}
-		if description != "" {
-			entry.Description = &description
-		}
-		next.Commands = append(append([]library.Entry{}, m.lib.Commands...), entry)
-		m.updateLibrary(next)
-		m.screen = newListScreen(m)
-		return m.flashDefault("Added")
+		verb = "Added"
+		next, err = library.Add(m.lib, draft)
+	} else {
+		next, err = library.Update(m.lib, s.id, draft)
+	}
+	if err != nil {
+		// problem() has already refused everything the Library refuses, so this
+		// is unreachable — but it is a refusal, and staying on the form with the
+		// reason on it is what a refusal looks like here.
+		s.tried = true
+		return nil
 	}
 
-	// rename/edit in place: keep the id and the file slot (only the fields
-	// change), so State and array order both survive.
-	commands := make([]library.Entry, len(m.lib.Commands))
-	copy(commands, m.lib.Commands)
-	for i := range commands {
-		if commands[i].ID != s.id {
-			continue
-		}
-		commands[i].Name = name
-		commands[i].Command = command
-		if description != "" {
-			commands[i].Description = &description
-		} else {
-			commands[i].Description = nil
-		}
-	}
-	next.Commands = commands
-	m.updateLibrary(next)
+	saved := m.updateLibrary(next)
 	m.screen = newListScreen(m)
-	return m.flashDefault("Saved")
+	return m.finish(verb, saved)
 }
 
 func (s *editScreen) keys(*Model) []footerKey {
@@ -235,7 +222,7 @@ func (s *editScreen) view(m *Model) []string {
 	// A name collision is worth saying the moment it is typed — it is the one
 	// problem the user cannot see coming. The rest wait for a refused save.
 	warning := ""
-	if name := strings.TrimSpace(s.value(fieldName)); name != "" && s.taken(m, name) {
+	if name := strings.TrimSpace(s.value(fieldName)); name != "" && library.NameTaken(m.lib, name, s.id) {
 		warning = fmt.Sprintf("'%s' already exists", name)
 	} else if s.tried {
 		warning = s.problem(m)

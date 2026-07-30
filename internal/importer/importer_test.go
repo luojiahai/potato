@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"encoding/json"
 	"regexp"
 	"testing"
 
@@ -97,6 +98,70 @@ func TestMergePicksLowestFreeSuffix(t *testing.T) {
 	result := Merge(base, theirs)
 	if len(result.Renamed) != 1 || result.Renamed[0].To != "ship (2)" {
 		t.Errorf("renamed = %v, want ship → ship (2)", result.Renamed)
+	}
+}
+
+// An incoming Command's description and unknown fields have to survive being
+// re-homed. Merge hands the Library a Draft rather than an Entry, so both have
+// to be carried across explicitly — a conversion that dropped either would lose
+// data from a file written by a newer potato.
+func TestMergeCarriesDescriptionsAndUnknownFields(t *testing.T) {
+	description := "what it is for"
+	theirs := library.Library{Version: 2, Commands: []library.Entry{{
+		ID: "t1", Name: "zeta", Command: "echo z",
+		Description: &description,
+		Extra:       map[string]json.RawMessage{"note": json.RawMessage(`"from the future"`)},
+	}}}
+	result := Merge(ours(), theirs)
+
+	zeta := find(result.Merged, "zeta")
+	if zeta == nil {
+		t.Fatal("the incoming Command is missing")
+	}
+	if zeta.Description == nil || *zeta.Description != description {
+		t.Errorf("description = %v, want %q", zeta.Description, description)
+	}
+	if string(zeta.Extra["note"]) != `"from the future"` {
+		t.Errorf("unknown field lost: %v", zeta.Extra)
+	}
+	// The merged Command must not share the map with the file it came from.
+	theirs.Commands[0].Extra["note"] = json.RawMessage(`"mutated"`)
+	if string(zeta.Extra["note"]) != `"from the future"` {
+		t.Error("Extra is aliased to the incoming Library")
+	}
+}
+
+// Two incoming Commands colliding with each other take successive suffixes.
+// This is what makes asking FreeName per Command — against the running merged
+// Library — the right shape, rather than seeding a name set up front.
+func TestMergeResolvesCollisionsAmongTheIncomingCommands(t *testing.T) {
+	theirs := library.Library{Version: 2, Commands: []library.Entry{
+		{ID: "t1", Name: "alpha", Command: "echo one"},
+		{ID: "t2", Name: "alpha", Command: "echo two"},
+	}}
+	result := Merge(ours(), theirs)
+
+	if len(result.Renamed) != 2 {
+		t.Fatalf("renamed = %v, want two renames", result.Renamed)
+	}
+	if result.Renamed[0].To != "alpha (1)" || result.Renamed[1].To != "alpha (2)" {
+		t.Errorf("renamed = %v, want successive suffixes", result.Renamed)
+	}
+	if got := find(result.Merged, "alpha (1)"); got == nil || got.Command != "echo one" {
+		t.Errorf("alpha (1) = %+v", got)
+	}
+	if got := find(result.Merged, "alpha (2)"); got == nil || got.Command != "echo two" {
+		t.Errorf("alpha (2) = %+v", got)
+	}
+}
+
+// Merge does not mutate the Library it was given.
+func TestMergeLeavesOursAlone(t *testing.T) {
+	base := ours()
+	theirs := library.Library{Version: 2, Commands: []library.Entry{{ID: "t1", Name: "zeta", Command: "echo z"}}}
+	Merge(base, theirs)
+	if len(base.Commands) != 2 {
+		t.Errorf("ours grew to %d commands", len(base.Commands))
 	}
 }
 

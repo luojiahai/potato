@@ -134,12 +134,11 @@ func TestFrames(t *testing.T) {
 	}
 
 	cases := []struct {
-		name     string
-		rows     int
-		columns  int
-		keys     []string
-		migrated bool
-		lib      *library.Library
+		name    string
+		rows    int
+		columns int
+		keys    []string
+		lib     *library.Library
 	}{
 		// the geometry tiers: the frame's height comes from the terminal alone
 		// — capped at the row ceiling on a tall one, and squeezed on a short
@@ -158,7 +157,6 @@ func TestFrames(t *testing.T) {
 		{name: "list-24x80-query", rows: 24, columns: 80, keys: []string{"ports"}},
 		{name: "list-24x80-nomatch", rows: 24, columns: 80, keys: []string{"zzz"}},
 		{name: "list-24x80-down", rows: 24, columns: 80, keys: []string{"down"}},
-		{name: "list-24x80-migrated", rows: 24, columns: 80, migrated: true},
 
 		// the empty and overflowing states
 		{name: "list-24x80-empty", rows: 24, columns: 80, lib: ptr(emptyLibrary())},
@@ -191,7 +189,6 @@ func TestFrames(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			deps := fixtureDeps()
-			deps.Migrated = tc.migrated
 			if tc.lib != nil {
 				deps.Library = *tc.lib
 				deps.State = state.State{}

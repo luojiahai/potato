@@ -21,6 +21,7 @@ import (
 	"github.com/luojiahai/potato/internal/library"
 	"github.com/luojiahai/potato/internal/placeholders"
 	"github.com/luojiahai/potato/internal/search"
+	"github.com/luojiahai/potato/internal/state"
 )
 
 // focus is which of the list screen's two zones has the keyboard. The screen is
@@ -238,22 +239,20 @@ func (s *listScreen) move(m *Model, delta int) {
 
 // delete removes the Command the confirm names, by id — the query and the
 // selection may both have moved since the confirm opened.
+//
+// Both files are written: the Library loses the Command and State loses its
+// cache entry. They are separate calls because they are separate files with
+// separate lifetimes — see docs/adr/0002 — and this is the one place that knows
+// a Command is being destroyed rather than merely edited.
 func (s *listScreen) delete(m *Model) tea.Cmd {
-	entry := library.FindByID(m.lib, s.confirming)
+	entry, ok := library.Find(m.lib, s.confirming)
 	s.confirming = ""
-	if entry == nil {
+	if !ok {
 		return nil
 	}
-	next := m.lib
-	commands := make([]library.Entry, 0, len(m.lib.Commands))
-	for _, c := range m.lib.Commands {
-		if c.ID != entry.ID {
-			commands = append(commands, c)
-		}
-	}
-	next.Commands = commands
-	m.updateLibrary(next)
-	return m.flashDefault(fmt.Sprintf("Deleted '%s'", entry.Name))
+	saved := m.updateLibrary(library.Remove(m.lib, entry.ID))
+	forgotten := m.updateState(state.Forget(m.st, entry.ID))
+	return m.finish(fmt.Sprintf("Deleted '%s'", entry.Name), saved, forgotten)
 }
 
 func (s *listScreen) keys(*Model) []footerKey {

@@ -3,16 +3,28 @@
 // human-facing field. Fail loud on anything invalid — potato never writes to a
 // file it couldn't parse. Unknown fields are tolerated and preserved; array
 // order is meaningful and kept (renames hold their slot, new entries append).
+//
+// Mutation lives here too, behind Add / Update / Remove. It used to live in
+// whichever caller needed it — the edit screen, the list screen's delete, the
+// importer — and each of them re-derived the rules the parser would hold the
+// file to: minting an id, keeping names unique, holding a renamed Command's
+// slot, nil-ing an empty description. One of them getting it wrong would have
+// written a Library that the next launch refused to read. Now `validate` is
+// the one statement of those rules, and both Parse and Save run it, so what
+// potato refuses to read and what it refuses to write cannot drift apart.
 package library
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // Entry is one Command. Extra carries any field potato does not know about,
@@ -38,15 +50,177 @@ type Error struct{ msg string }
 
 func (e *Error) Error() string { return e.msg }
 
-// NewError builds the same source-prefixed fail-loud error the parser
-// raises, for the v1 reader in package migrate.
-func NewError(source, reason string) error {
+func fail(source, reason string) error {
 	return &Error{msg: fmt.Sprintf("%s: %s", source, reason)}
 }
 
-func fail(source, reason string) error { return NewError(source, reason) }
-
 func Empty() Library { return Library{Version: 2, Commands: []Entry{}} }
+
+// Draft is a Command's content without its identity: a name, an optional
+// description, and a template string. It is what the add/edit form holds and
+// what Add and Update accept; a Draft becomes a Command when the Library gives
+// it an id.
+//
+// Extra carries the unknown fields of a Command being re-homed from another
+// Library — see Add. Update ignores it, because the Command it is updating
+// already has its own and a form that knows nothing about unknown fields must
+// not be able to drop them.
+type Draft struct {
+	Name        string
+	Description string
+	Command     string
+	Extra       map[string]json.RawMessage
+}
+
+// draftEntry normalises a Draft into the Entry fields a Command carries: the
+// name trimmed, the description trimmed and absent when empty. It does not
+// mint an id — that is Add's, since Update must not.
+func draftEntry(d Draft) (Entry, error) {
+	name := strings.TrimSpace(d.Name)
+	if name == "" {
+		return Entry{}, fmt.Errorf("a Command needs a name")
+	}
+	if strings.TrimSpace(d.Command) == "" {
+		return Entry{}, fmt.Errorf("command %s needs a command", quote(name))
+	}
+	entry := Entry{Name: name, Command: d.Command}
+	// An empty description is an absent one, so "present but empty" is not a
+	// state the Library can be in and nothing downstream has to test for both.
+	if description := strings.TrimSpace(d.Description); description != "" {
+		entry.Description = &description
+	}
+	return entry, nil
+}
+
+// Add appends a new Command under a freshly minted id, refusing a name another
+// Command already holds. Extra is carried and cloned — an imported Command's
+// unknown fields have to survive the round trip, and the source Library must
+// not be left sharing the map.
+func Add(lib Library, d Draft) (Library, error) {
+	entry, err := draftEntry(d)
+	if err != nil {
+		return Library{}, err
+	}
+	if NameTaken(lib, entry.Name, "") {
+		return Library{}, fmt.Errorf("%s already exists", quote(entry.Name))
+	}
+	entry.ID = uuid.NewString()
+	entry.Extra = maps.Clone(d.Extra)
+	next := lib
+	next.Commands = append(append([]Entry{}, lib.Commands...), entry)
+	return next, nil
+}
+
+// Update rewrites a Command's fields in place. The id, the array slot and the
+// Command's unknown fields all stay as they were — a rename is a change of
+// name, and State keyed by id and a file whose order is meaningful both depend
+// on that being true.
+func Update(lib Library, id string, d Draft) (Library, error) {
+	entry, err := draftEntry(d)
+	if err != nil {
+		return Library{}, err
+	}
+	if NameTaken(lib, entry.Name, id) {
+		return Library{}, fmt.Errorf("%s already exists", quote(entry.Name))
+	}
+	commands := make([]Entry, len(lib.Commands))
+	copy(commands, lib.Commands)
+	found := false
+	for i := range commands {
+		if commands[i].ID != id {
+			continue
+		}
+		found = true
+		commands[i].Name = entry.Name
+		commands[i].Command = entry.Command
+		commands[i].Description = entry.Description
+	}
+	if !found {
+		return Library{}, fmt.Errorf("no Command with id %s", quote(id))
+	}
+	next := lib
+	next.Commands = commands
+	return next, nil
+}
+
+// Remove drops a Command from the Library and nothing else. An unknown id is
+// not an error — the Command is already gone, which is what the caller wanted.
+//
+// State is a separate, disposable file: callers pair this with state.Forget so
+// the portable Library and the throwaway cache stay independently owned. See
+// docs/adr/0002-library-does-not-prune-state.md.
+func Remove(lib Library, id string) Library {
+	commands := make([]Entry, 0, len(lib.Commands))
+	for _, entry := range lib.Commands {
+		if entry.ID != id {
+			commands = append(commands, entry)
+		}
+	}
+	next := lib
+	next.Commands = commands
+	return next
+}
+
+// NameTaken reports whether some Command other than exceptID already holds
+// this name. Pass "" for exceptID when adding; pass the Command's own id when
+// updating, so renaming a Command to the name it already has is allowed.
+//
+// This is the one statement of the rule: the add/edit form's live warning, Add,
+// Update, FreeName and validate all ask it, so the warning cannot promise a
+// name that the save then refuses.
+func NameTaken(lib Library, name, exceptID string) bool {
+	for _, entry := range lib.Commands {
+		if entry.Name == name && entry.ID != exceptID {
+			return true
+		}
+	}
+	return false
+}
+
+// FreeName is want, or want with the lowest free `(N)` from 1 appended. It is
+// how an Import resolves a Collision: both Commands are kept and the incoming
+// one takes the suffix.
+func FreeName(lib Library, want string) string {
+	if !NameTaken(lib, want, "") {
+		return want
+	}
+	for n := 1; ; n++ {
+		candidate := fmt.Sprintf("%s (%d)", want, n)
+		if !NameTaken(lib, candidate, "") {
+			return candidate
+		}
+	}
+}
+
+// validate reports the first Library-level invariant this Library breaks, or
+// "". The reason is returned rather than an error so both callers can name
+// their own source: Parse the file it read, Save the file it is about to write.
+func validate(lib Library) string {
+	ids := map[string]bool{}
+	for i, entry := range lib.Commands {
+		if entry.ID == "" {
+			return fmt.Sprintf("command at index %d needs a non-empty %q string", i, "id")
+		}
+		if ids[entry.ID] {
+			return fmt.Sprintf("duplicate id %s", quote(entry.ID))
+		}
+		ids[entry.ID] = true
+
+		if strings.TrimSpace(entry.Name) == "" {
+			return fmt.Sprintf("command %s needs a non-empty %q", quote(entry.ID), "name")
+		}
+		// Checked against every *other* entry, which is the same rule the
+		// add/edit form's warning asks about.
+		if NameTaken(lib, entry.Name, entry.ID) {
+			return fmt.Sprintf("duplicate name %s", quote(entry.Name))
+		}
+
+		if entry.Command == "" {
+			return fmt.Sprintf("command %s needs a non-empty %q string", quote(entry.Name), "command")
+		}
+	}
+	return ""
+}
 
 // Parse is version-strict: it parses v2 and fail-loud rejects anything else,
 // including v1 (v1 files are upgraded by the migration loader, not here).
@@ -86,8 +260,6 @@ func Parse(text, source string) (Library, error) {
 		}
 	}
 
-	ids := map[string]bool{}
-	names := map[string]bool{}
 	for i, raw := range rawEntries {
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &fields); err != nil {
@@ -97,15 +269,13 @@ func Parse(text, source string) (Library, error) {
 		entry := Entry{Extra: map[string]json.RawMessage{}}
 
 		// id: loose — non-empty string, unique within the file (UUID format
-		// not enforced)
+		// not enforced). Uniqueness is validate's, below; what has to be
+		// checked here is what only the raw JSON can tell you — a non-string
+		// is not the same fault as an empty one.
 		id, isString := decodeString(fields["id"])
 		if !isString || id == "" {
 			return Library{}, fail(source, fmt.Sprintf("command at index %d needs a non-empty %q string", i, "id"))
 		}
-		if ids[id] {
-			return Library{}, fail(source, fmt.Sprintf("duplicate id %s", quote(id)))
-		}
-		ids[id] = true
 		entry.ID = id
 
 		// name: unique, case-sensitive, non-empty after trimming
@@ -113,10 +283,6 @@ func Parse(text, source string) (Library, error) {
 		if !isString || strings.TrimSpace(name) == "" {
 			return Library{}, fail(source, fmt.Sprintf("command %s needs a non-empty %q", quote(id), "name"))
 		}
-		if names[name] {
-			return Library{}, fail(source, fmt.Sprintf("duplicate name %s", quote(name)))
-		}
-		names[name] = true
 		entry.Name = name
 
 		command, isString := decodeString(fields["command"])
@@ -141,6 +307,9 @@ func Parse(text, source string) (Library, error) {
 			}
 		}
 		lib.Commands = append(lib.Commands, entry)
+	}
+	if reason := validate(lib); reason != "" {
+		return Library{}, fail(source, reason)
 	}
 	return lib, nil
 }
@@ -193,8 +362,17 @@ func Load(path string) (Library, error) {
 }
 
 // Save writes atomically (temp + rename): a failed write leaves the original
-// untouched, so a crashed migration or save never corrupts the Library.
+// untouched, so a crashed save never corrupts the Library.
+//
+// It refuses a Library that Parse would reject, before touching the disk. The
+// mutations that reach here all come from Add / Update / Remove and are valid
+// by construction, so this fires only on a Library some caller hand-built —
+// which is exactly the case worth catching, because the cost of writing one is
+// a file potato cannot read on the next launch.
 func Save(path string, lib Library) error {
+	if reason := validate(lib); reason != "" {
+		return fail(path, reason)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -205,13 +383,17 @@ func Save(path string, lib Library) error {
 	return os.Rename(tmp, path)
 }
 
-func FindByID(lib Library, id string) *Entry {
-	for i := range lib.Commands {
-		if lib.Commands[i].ID == id {
-			return &lib.Commands[i]
+// Find returns the Command with this id. It hands back a copy rather than a
+// pointer into the Commands slice: a read must not be a way to write past
+// Add / Update, and comma-ok is a contract a caller cannot forget to honour
+// the way a nil pointer can.
+func Find(lib Library, id string) (Entry, bool) {
+	for _, entry := range lib.Commands {
+		if entry.ID == id {
+			return entry, true
 		}
 	}
-	return nil
+	return Entry{}, false
 }
 
 // ---------- JSON helpers ----------

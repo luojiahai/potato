@@ -9,9 +9,9 @@ import (
 	"testing"
 )
 
-// CLI seams: `potato import` (merge / override / migrate-on-load) run as a
-// real subprocess against a POTATO_INSTALL temp dir, plus `potato init`
-// against the goldens captured from the Ink build.
+// CLI seams: `potato import` (merge / override) run as a real subprocess
+// against a POTATO_INSTALL temp dir, plus `potato init` against the goldens
+// captured from the Ink build.
 
 var binary string
 
@@ -232,49 +232,34 @@ func TestImportRejectsAV1IncomingFile(t *testing.T) {
 	}
 }
 
-func TestOwnV1LibraryAutoMigratesOnLoad(t *testing.T) {
+// A v1 library of our own is refused rather than upgraded. No released version
+// of potato ever wrote one — v2 landed before v0.1.1, the first tag — so the
+// upgrade path was serving a file that cannot exist. See
+// docs/adr/0001-reject-v1-libraries.md. It must fail loud rather than silently
+// treat the library as empty, which would look exactly like data loss.
+func TestOwnV1LibraryIsRefusedNotMigrated(t *testing.T) {
 	home := t.TempDir()
-	writeFile(t, filepath.Join(home, "commands.json"), `{"version":1,"commands":{"legacy":{"command":"echo old"}}}`)
-	writeFile(t, filepath.Join(home, "state.json"),
-		`{"legacy":{"lastUsedAt":"2026-07-01T00:00:00.000Z"},"ghost":{"lastUsedAt":"2026-01-01T00:00:00.000Z"}}`)
+	v1 := `{"version":1,"commands":{"legacy":{"command":"echo old"}}}`
+	writeFile(t, filepath.Join(home, "commands.json"), v1)
 	incoming := filepath.Join(t.TempDir(), "theirs.json")
 	writeFile(t, incoming, v2(entry{ID: "t1", Name: "fresh", Command: "echo new"}))
 
 	got := run(t, []string{"import", incoming}, home, "")
-	if got.exitCode != 0 {
-		t.Fatalf("exit %d: %s", got.exitCode, got.stderr)
+	if got.exitCode == 0 {
+		t.Fatal("expected a non-zero exit")
 	}
-	if !strings.Contains(got.stderr, "Upgraded your library to v2") {
+	if !strings.Contains(got.stderr, "unsupported version 1") {
 		t.Errorf("stderr = %q", got.stderr)
 	}
 
-	lib := readLib(t, home)
-	if lib.Version != 2 {
-		t.Errorf("version = %d", lib.Version)
-	}
-	legacy := find(lib.Commands, "legacy")
-	if legacy == nil || legacy.Command != "echo old" {
-		t.Fatalf("legacy = %+v", legacy)
-	}
-
-	raw, err := os.ReadFile(filepath.Join(home, "state.json"))
+	// The v1 file is left exactly as it was, so nothing has been destroyed and
+	// the user can convert or delete it themselves.
+	raw, err := os.ReadFile(filepath.Join(home, "commands.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var st map[string]struct {
-		LastUsedAt string `json:"lastUsedAt"`
-	}
-	if err := json.Unmarshal(raw, &st); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := st["legacy"]; ok {
-		t.Error("state is still keyed by name")
-	}
-	if _, ok := st["ghost"]; ok {
-		t.Error("the orphan state entry was kept")
-	}
-	if st[legacy.ID].LastUsedAt != "2026-07-01T00:00:00.000Z" {
-		t.Errorf("state not rekeyed onto the id: %v", st)
+	if string(raw) != v1 {
+		t.Errorf("the v1 library was rewritten:\n%s", raw)
 	}
 }
 

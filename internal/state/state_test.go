@@ -45,6 +45,27 @@ func TestRecordUseRoundTrip(t *testing.T) {
 	}
 }
 
+func TestForgetDropsOnlyThatCommand(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	s := RecordUse(State{}, "keep", map[string]string{"a": "1"}, now)
+	s = RecordUse(s, "drop", nil, now)
+
+	next := Forget(s, "drop")
+	if _, ok := next["drop"]; ok {
+		t.Error("the forgotten Command is still cached")
+	}
+	if _, ok := next["keep"]; !ok {
+		t.Error("Forget dropped a Command it was not asked about")
+	}
+	if _, ok := s["drop"]; !ok {
+		t.Error("Forget mutated the State it was given")
+	}
+	// Forgetting what was never cached is not a fault.
+	if got := Forget(next, "never"); len(got) != 1 {
+		t.Errorf("forgetting an unknown id changed the State: %v", got)
+	}
+}
+
 func TestRecordUseMergesArgs(t *testing.T) {
 	s := RecordUse(State{}, "x", map[string]string{"a": "1", "b": "2"}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	s = RecordUse(s, "x", map[string]string{"b": "3"}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
