@@ -13,10 +13,8 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/luojiahai/potato/internal/library"
 	"github.com/luojiahai/potato/internal/placeholders"
 )
@@ -37,9 +35,14 @@ var editLabels = [fieldCount]string{
 	fieldCommand:     "Command",
 }
 
+// commandHint is what the command field shows while it is empty. It lives on
+// the field rather than in a section of its own, so it costs no row and
+// vanishes on the first keystroke.
+const commandHint = "Type a command — {{name}} or {{name=default}} become args"
+
 type editScreen struct {
 	id     string // "" = a new Command
-	inputs []textinput.Model
+	fields []field
 	focus  int
 	// tried records a save that was refused. Until then the form stays quiet
 	// about the fields it is still waiting for — a brand-new Command is empty
@@ -58,21 +61,27 @@ func newEditScreen(m *Model, command *library.Command) *editScreen {
 			values[fieldDescription] = *command.Description
 		}
 	}
-	for _, value := range values {
-		input := newField()
-		input.SetValue(value)
-		s.inputs = append(s.inputs, input)
+	for i, value := range values {
+		f := newField(fieldWrap)
+		// Only the command field highlights Placeholders — it is the only one
+		// where `{{name}}` means anything — and only it has a hint to offer.
+		if i == fieldCommand {
+			f.paint = func(value string, _ bool) []run { return templateRuns(value) }
+			f.hint = commandHint
+		}
+		f.SetValue(value)
+		s.fields = append(s.fields, f)
 	}
-	s.inputs[fieldName].Focus()
+	s.fields[fieldName].Focus()
 	return s
 }
 
-func (s *editScreen) value(i int) string { return s.inputs[i].Value() }
+func (s *editScreen) value(i int) string { return s.fields[i].Value() }
 
 func (s *editScreen) setFocus(i int) {
-	s.inputs[s.focus].Blur()
-	s.focus = ((i % len(s.inputs)) + len(s.inputs)) % len(s.inputs)
-	s.inputs[s.focus].Focus()
+	s.fields[s.focus].Blur()
+	s.focus = ((i % len(s.fields)) + len(s.fields)) % len(s.fields)
+	s.fields[s.focus].Focus()
 }
 
 // collision is the warning for a name another Command already holds, or "". It
@@ -135,8 +144,7 @@ func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 }
 
 func (s *editScreen) forward(msg tea.Msg) tea.Cmd {
-	var cmd tea.Cmd
-	s.inputs[s.focus], cmd = s.inputs[s.focus].Update(msg)
+	cmd, _ := s.fields[s.focus].Update(msg)
 	return cmd
 }
 
@@ -178,49 +186,6 @@ func (s *editScreen) keys(*Model) []footerKey {
 	return footerKeys(keymap.edit.Save, keymap.form.Next, keymap.edit.Cancel)
 }
 
-// rows renders one field's value, wrapped to the width and carrying the caret
-// when focused, and reports which row the caret landed on. Only the command
-// field highlights placeholders — it is the only field where `{{name}}` means
-// anything.
-func (s *editScreen) rows(i, inner int, on bool) ([]string, int) {
-	value := s.value(i)
-	focused := i == s.focus
-
-	if i != fieldCommand {
-		return valueRowsAt([]run{{text: value, style: textStyle}}, value, s.inputs[i].Position(), inner, focused, on)
-	}
-	if value == "" {
-		// The hint lives on the caret row rather than in a section of its own,
-		// so it costs no row and vanishes on the first keystroke.
-		const hint = "Type a command — {{name}} or {{name=default}} become args"
-		if !focused {
-			return []string{ansi.Truncate(dimStyle.Render(hint), inner, "")}, 0
-		}
-		// The caret sits on the hint's first character rather than in a cell of
-		// its own in front of it. Given a cell, the hint stepped a column to the
-		// right the moment the field took the keyboard — the text moved to make
-		// room for a caret that has nothing to sit on yet. A placeholder is
-		// exactly what a caret should be allowed to sit on: bubbles puts it on
-		// the first character in the search field, and the row is the same width
-		// either way, so nothing moves when focus arrives or leaves.
-		rs := []rune(hint)
-		head := dimStyle
-		if on {
-			head = caretStyle
-		}
-		return []string{ansi.Truncate(head.Render(string(rs[0]))+dimStyle.Render(string(rs[1:])), inner, "")}, 0
-	}
-	var runs []run
-	for _, seg := range placeholders.TemplateSegments(value) {
-		style := textStyle
-		if seg.Flag {
-			style = highlightStyle.Bold(true)
-		}
-		runs = append(runs, run{text: seg.Text, style: style})
-	}
-	return valueRowsAt(runs, value, s.inputs[fieldCommand].Position(), inner, focused, on)
-}
-
 // label heads a field's section, in accent when the field has the keyboard.
 func (s *editScreen) label(i int) lipgloss.Style {
 	if i == s.focus {
@@ -245,9 +210,9 @@ func (s *editScreen) view(m *Model) []string {
 	}
 
 	on := m.caretOn()
-	nameRows, _ := s.rows(fieldName, inner, on)
-	descRows, _ := s.rows(fieldDescription, inner, on)
-	cmdRows, caretRow := s.rows(fieldCommand, inner, on)
+	nameRows, _ := s.fields[fieldName].Rows(inner, on)
+	descRows, _ := s.fields[fieldDescription].Rows(inner, on)
+	cmdRows, caretRow := s.fields[fieldCommand].Rows(inner, on)
 
 	nameSec := section(width, editLabels[fieldName], s.label(fieldName), "", nameRows)
 	descSec := section(width, editLabels[fieldDescription], s.label(fieldDescription), "Optional", descRows)

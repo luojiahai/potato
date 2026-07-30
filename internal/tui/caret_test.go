@@ -7,30 +7,12 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// potato paints its caret from two places: bubbles draws the search field's
-// inside textinput.View, and wrapStyledHard draws every other field's. The
-// frame goldens are compared de-ANSI'd and cannot see either. These assert that
-// the two are the same cell, and that the blink only changes what colour that
-// cell is — never the row around it.
-
-// The caret is one cell wherever it is. A field that painted its own would be a
-// second caret with the same job, and the difference would only show up on
-// someone else's terminal.
-func TestTheFieldsPaintTheSearchFieldsCaret(t *testing.T) {
-	input := newField()
-	input.SetValue("x")
-	input.Focus()
-	input.SetCursor(0)
-
-	// Rendered rather than hand-written: bubbles builds the cell from the
-	// cursor colour it was given, and this asserts the fields build the same
-	// bytes from the same colour, not merely something that looks close.
-	want := caretStyle.Render("x")
-	if got := input.View(); !strings.Contains(got, want) {
-		t.Errorf("the search field paints %q where the fields paint %q — "+
-			"the caret changes identity between screens", got, want)
-	}
-}
+// Every caret in the frame is drawn by one Field, so there is no longer a
+// second implementation to keep in step — what used to be asserted here is now
+// true by construction. The frame goldens are compared de-ANSI'd and cannot see
+// a caret at all. These assert that it survives the trim, that it sits where it
+// should, and that the blink only changes what colour its cell is — never the
+// row around it.
 
 // The caret has to survive the trim every row goes through on the way out of
 // View. A field's row ends at its value, so a caret parked past the last

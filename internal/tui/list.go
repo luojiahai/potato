@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -40,7 +39,7 @@ const (
 )
 
 type listScreen struct {
-	input textinput.Model
+	query field
 	sel   int
 	focus focus
 	// confirming holds the id of the Command awaiting a delete confirmation,
@@ -50,7 +49,7 @@ type listScreen struct {
 }
 
 func newListScreen(m *Model) *listScreen {
-	s := &listScreen{input: newField()}
+	s := &listScreen{query: newField(fieldLine)}
 	// An empty Library has nothing to search and one thing to do, and `a` has
 	// to work on the first key a new user presses.
 	if len(m.lib.Commands) == 0 {
@@ -66,41 +65,14 @@ func newListScreen(m *Model) *listScreen {
 func (s *listScreen) setFocus(f focus) {
 	s.focus = f
 	if f != focusSearch {
-		s.input.Blur()
+		s.query.Blur()
 		return
 	}
-	// The blink command is dropped, the way the Model drops the one its own
-	// caret clock hands back. Focus alone leaves the caret solid; the next
-	// keystroke re-arms the blink. Returning it here would start the field
-	// blinking on a tab round-trip but not on launch, which reads as two
-	// different carets rather than one that has just been handed the keyboard.
-	s.input.Focus()
-}
-
-// newField builds a text input shaped like potato's fields: no prompt, no
-// placeholder, and a cursor rendered into the view rather than delegated to
-// the terminal.
-func newField() textinput.Model {
-	input := textinput.New()
-	input.Prompt = ""
-	input.SetVirtualCursor(true)
-	// The bubbles defaults reach for ANSI palette indices, which would leave
-	// the caret and the text the user is typing coloured by their terminal
-	// theme rather than by potato.
-	styles := input.Styles()
-	styles.Cursor.Color = lipgloss.Color(accentColor)
-	for _, state := range []*textinput.StyleState{&styles.Focused, &styles.Blurred} {
-		state.Text = textStyle
-		state.Prompt = dimStyle
-		state.Placeholder = dimStyle
-		state.Suggestion = dimStyle
-	}
-	input.SetStyles(styles)
-	return input
+	s.query.Focus()
 }
 
 func (s *listScreen) results(m *Model) []library.Command {
-	return search.Commands(m.lib.Commands, m.st, s.input.Value())
+	return search.Commands(m.lib.Commands, m.st, s.query.Value())
 }
 
 func (s *listScreen) selected(m *Model) *library.Command {
@@ -115,8 +87,7 @@ func (s *listScreen) selected(m *Model) *library.Command {
 func (s *listScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if !ok {
-		var cmd tea.Cmd
-		s.input, cmd = s.input.Update(msg)
+		cmd, _ := s.query.Update(msg)
 		return cmd
 	}
 
@@ -161,13 +132,12 @@ func (s *listScreen) fromSearch(m *Model, msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
-	before := s.input.Value()
-	var cmd tea.Cmd
-	s.input, cmd = s.input.Update(msg)
-	// Editing the query resets the selection; pure cursor motion does not.
-	// This is the only place the query can change, which is what lets the
-	// selection survive a round trip through the list zone.
-	if s.input.Value() != before {
+	// Editing the query resets the selection; pure cursor motion does not. The
+	// field reports the difference, and this is the only place the query can
+	// change — which is what lets the selection survive a round trip through
+	// the list zone.
+	cmd, edited := s.query.Update(msg)
+	if edited {
 		s.sel = 0
 	}
 	return cmd
@@ -276,7 +246,7 @@ func (s *listScreen) view(m *Model) []string {
 func (s *listScreen) content(m *Model) []string {
 	width := m.innerWidth()
 	body := m.bodyHeight()
-	query := s.input.Value()
+	query := s.query.Value()
 	results := s.results(m)
 	sel := min(s.sel, max(0, len(results)-1))
 
@@ -338,6 +308,14 @@ func regions(body, top int) (list, detail int) {
 	return list, detail
 }
 
+const (
+	searchGlyph = "⌕ "
+	// searchGlyphWidth is what the glyph and its space cost the field beside
+	// it. Written out because the field has to be given its width before
+	// anything is rendered, so there is nothing to measure yet.
+	searchGlyphWidth = 2
+)
+
 // searchRow is the prompt and the result count on one row — where the search
 // field used to cost three, two of them border. The count yields to the query
 // as the row narrows: what you are typing outranks how much it found, and the
@@ -351,10 +329,14 @@ func (s *listScreen) searchRow(m *Model, results []library.Command, width int) s
 	if s.focus != focusSearch {
 		glyph = sectionStyle()
 	}
-	left := glyph.Render("⌕ ") + s.input.View()
+	// The field is given the row less its glyph, so a query longer than the row
+	// slides under its caret rather than running off the end of the frame to be
+	// cut by the clamp in View — which took the caret with it.
+	rows, _ := s.query.Rows(width-searchGlyphWidth, m.caretOn())
+	left := glyph.Render(searchGlyph) + rows[0]
 	counts := fmt.Sprintf("%d/%d", len(results), len(m.lib.Commands))
 	for _, right := range []string{counts + " · Recently used", counts, ""} {
-		if s.input.Value() != "" && strings.HasSuffix(right, "Recently used") {
+		if s.query.Value() != "" && strings.HasSuffix(right, "Recently used") {
 			continue
 		}
 		gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
@@ -696,14 +678,7 @@ func dimLines(text string, inner int) []string {
 // commandBlock renders a Command with its `$ ` gutter, its Placeholders picked
 // out, wrapped to width.
 func commandBlock(command string, inner int) []string {
-	runs := []run{{text: "$ ", style: dimStyle}}
-	for _, seg := range placeholders.TemplateSegments(command) {
-		style := textStyle
-		if seg.Flag {
-			style = highlightStyle.Bold(true)
-		}
-		runs = append(runs, run{text: seg.Text, style: style})
-	}
+	runs := append([]run{{text: "$ ", style: dimStyle}}, templateRuns(command)...)
 	return wrapStyled(runs, inner)
 }
 

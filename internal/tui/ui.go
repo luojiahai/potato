@@ -254,22 +254,6 @@ func footerWidth(keys []footerKey) int {
 
 // ---------- fields ----------
 
-// valueRowsAt renders a field's value wrapped to the width, with the block
-// caret drawn in when the field has focus, and reports which row the caret
-// landed on so a field taller than the space left for it can be windowed
-// around it.
-//
-// on is the blink's lit half. It is separate from focused because the two
-// answer different questions: focused says whether this field has a caret at
-// all, on says whether the caret is showing this frame.
-func valueRowsAt(runs []run, value string, pos, width int, focused, on bool) ([]string, int) {
-	caret := -1
-	if focused {
-		caret = min(pos, len([]rune(value)))
-	}
-	return wrapStyledHard(runs, width, caret, on)
-}
-
 // window slides a block of rows so that row `at` stays visible, the way a
 // single-line field scrolls its value.
 func window(rows []string, at, height int) []string {
