@@ -82,10 +82,9 @@ func TestEnterOnATemplatedCommandOpensTheArgForm(t *testing.T) {
 
 func TestArgFormRunsWithTheSuppliedValues(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"enter"}) // open the form for 'deploy prod'
-	args := m.screen.(*argsScreen)
-	args.form.Field(0).SetValue("prod-9")
-	press(m, []string{"enter"})
+	// The arg arrives pre-filled from State, so this is what changing it looks
+	// like: clear the field, type over it, run.
+	press(m, []string{"enter", "ctrl+u", "prod-9", "enter"})
 
 	if m.Handoff() != "ssh prod-9 'deploy.sh'" {
 		t.Errorf("handoff = %q", m.Handoff())
@@ -118,12 +117,8 @@ func TestCtrlYCopiesWithoutHandingOff(t *testing.T) {
 // Library's own promise, tested in library_test.go.
 func TestAddHandsTheFormsFieldsToTheLibrary(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "a"})
-	edit := m.screen.(*editScreen)
-	edit.form.Field(fieldName).SetValue("new one")
-	edit.form.Field(fieldDescription).SetValue("a description")
-	edit.form.Field(fieldCommand).SetValue("echo new")
-	press(m, []string{"enter"})
+	press(m, []string{"tab", "a",
+		"new one", "tab", "a description", "tab", "echo new", "enter"})
 
 	if len(rec.libraries) != 1 {
 		t.Fatalf("saved %d libraries, want 1", len(rec.libraries))
@@ -146,9 +141,7 @@ func TestAddHandsTheFormsFieldsToTheLibrary(t *testing.T) {
 
 func TestEditSavesTheRenamedName(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "e"})
-	m.screen.(*editScreen).form.Field(fieldName).SetValue("renamed")
-	press(m, []string{"enter"})
+	press(m, []string{"tab", "e", "ctrl+u", "renamed", "enter"})
 
 	if len(rec.libraries) != 1 {
 		t.Fatalf("saved %d libraries, want 1", len(rec.libraries))
@@ -167,11 +160,7 @@ func TestEditSavesTheRenamedName(t *testing.T) {
 func TestAFailedSaveSaysSoInsteadOfFlashingSaved(t *testing.T) {
 	m, rec := harness(t)
 	rec.failWith = errors.New("read-only file system")
-	press(m, []string{"tab", "a"})
-	edit := m.screen.(*editScreen)
-	edit.form.Field(fieldName).SetValue("doomed")
-	edit.form.Field(fieldCommand).SetValue("echo x")
-	press(m, []string{"enter"})
+	press(m, []string{"tab", "a", "doomed", "tab", "tab", "echo x", "enter"})
 
 	frame := render(t, m)
 	if strings.Contains(frame, "Added") {
@@ -197,11 +186,7 @@ func findByName(lib library.Library, name string) (library.Command, bool) {
 
 func TestEditRefusesADuplicateName(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "a"})
-	edit := m.screen.(*editScreen)
-	edit.form.Field(fieldName).SetValue("list ports")
-	edit.form.Field(fieldCommand).SetValue("echo x")
-	press(m, []string{"enter"})
+	press(m, []string{"tab", "a", "list ports", "tab", "tab", "echo x", "enter"})
 
 	if len(rec.libraries) != 0 {
 		t.Error("a duplicate name was saved")
@@ -373,8 +358,7 @@ func TestCtrlAIsLineStartInTheEditor(t *testing.T) {
 	if !ok {
 		t.Fatalf("`a` on the list screen opened %T, want the editor", m.screen)
 	}
-	edit.form.Field(fieldName).SetValue("abc")
-	press(m, []string{"ctrl+a"})
+	press(m, []string{"abc", "ctrl+a"})
 	if _, still := m.screen.(*editScreen); !still {
 		t.Fatal("^A inside the editor opened another screen")
 	}

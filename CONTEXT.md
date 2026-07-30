@@ -13,8 +13,16 @@ The user's full set of Commands, stored as the single portable file `~/.potato/c
 _Avoid_: database, collection, config
 
 **Draft**:
-A Command's content without its identity — a name, an optional description, and a template string. What the add/edit form holds, and what the Library accepts when adding or updating a Command. A Draft becomes a Command when the Library gives it an id.
-_Avoid_: form (that's the screen), input, params, fields (the edit screen's own constants)
+A Command's content without its identity — a name, an optional description, and a template string. What the add/edit screen's Form holds, and what the Library accepts when adding or updating a Command. A Draft becomes a Command when the Library gives it an id.
+_Avoid_: input, params (a Draft is what a Form's values become)
+
+**Field**:
+One editable value on screen — its text, its caret, and how it renders into a width. The search field, the three on the add/edit screen, and one per Placeholder on the arg screen. Potato paints every Field's caret itself; the library underneath keeps the value, the cursor and the readline keys.
+_Avoid_: input, textbox
+
+**Form**:
+The ordered Fields a screen holds, with the one focus ring that moves the keyboard between them. Tab is the Form's key, not a screen's. The add/edit screen and the arg screen each hold one; the list screen does not — its focus is a zone, the search field or the results.
+_Avoid_: fieldset, dialog
 
 **Placeholder**:
 A `{{name}}` or `{{name=default}}` slot in a Command's template, filled in via the arg form before hand-off.

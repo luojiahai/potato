@@ -70,6 +70,12 @@ func press(m *Model, keys []string) {
 			send(m, tea.KeyPressMsg{Code: tea.KeyUp})
 		case "ctrl+y":
 			send(m, tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl})
+		// The two ways a pre-filled field is cleared before it is typed over,
+		// which is what editing an existing Command starts with.
+		case "backspace":
+			send(m, tea.KeyPressMsg{Code: tea.KeyBackspace})
+		case "ctrl+u":
+			send(m, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 		// ^A, ^E and ^D are kept in this table precisely so the regression
 		// tests can press them and prove they no longer act on the list.
 		case "ctrl+a":
