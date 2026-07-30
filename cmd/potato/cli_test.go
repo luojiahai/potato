@@ -60,18 +60,18 @@ func run(t *testing.T, args []string, home string, stdin string) result {
 	return result{home: home, exitCode: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
-type entry struct {
+type command struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	Command     string `json:"command"`
+	Template    string `json:"command"`
 }
 
-func v2(entries ...entry) string {
-	if entries == nil {
-		entries = []entry{}
+func v2(commands ...command) string {
+	if commands == nil {
+		commands = []command{}
 	}
-	raw, err := json.Marshal(map[string]any{"version": 2, "commands": entries})
+	raw, err := json.Marshal(map[string]any{"version": 2, "commands": commands})
 	if err != nil {
 		panic(err)
 	}
@@ -86,8 +86,8 @@ func writeFile(t *testing.T, path, content string) {
 }
 
 func readLib(t *testing.T, home string) struct {
-	Version  int     `json:"version"`
-	Commands []entry `json:"commands"`
+	Version  int       `json:"version"`
+	Commands []command `json:"commands"`
 } {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(home, "commands.json"))
@@ -95,8 +95,8 @@ func readLib(t *testing.T, home string) struct {
 		t.Fatal(err)
 	}
 	var lib struct {
-		Version  int     `json:"version"`
-		Commands []entry `json:"commands"`
+		Version  int       `json:"version"`
+		Commands []command `json:"commands"`
 	}
 	if err := json.Unmarshal(raw, &lib); err != nil {
 		t.Fatalf("commands.json is not JSON: %v", err)
@@ -104,10 +104,10 @@ func readLib(t *testing.T, home string) struct {
 	return lib
 }
 
-func find(entries []entry, name string) *entry {
-	for i := range entries {
-		if entries[i].Name == name {
-			return &entries[i]
+func find(commands []command, name string) *command {
+	for i := range commands {
+		if commands[i].Name == name {
+			return &commands[i]
 		}
 	}
 	return nil
@@ -115,7 +115,7 @@ func find(entries []entry, name string) *entry {
 
 func TestImportAddsNewNames(t *testing.T) {
 	incoming := filepath.Join(t.TempDir(), "theirs.json")
-	writeFile(t, incoming, v2(entry{ID: "t1", Name: "hello", Command: "echo hi"}))
+	writeFile(t, incoming, v2(command{ID: "t1", Name: "hello", Template: "echo hi"}))
 
 	got := run(t, []string{"import", incoming}, "", "")
 	if got.exitCode != 0 {
@@ -129,7 +129,7 @@ func TestImportAddsNewNames(t *testing.T) {
 		t.Errorf("version = %d", lib.Version)
 	}
 	hello := find(lib.Commands, "hello")
-	if hello == nil || hello.Command != "echo hi" {
+	if hello == nil || hello.Template != "echo hi" {
 		t.Fatalf("hello = %+v", hello)
 	}
 	if hello.ID == "t1" {
@@ -139,9 +139,9 @@ func TestImportAddsNewNames(t *testing.T) {
 
 func TestImportCollisionKeepsBoth(t *testing.T) {
 	home := t.TempDir()
-	writeFile(t, filepath.Join(home, "commands.json"), v2(entry{ID: "o1", Name: "x", Command: "ours"}))
+	writeFile(t, filepath.Join(home, "commands.json"), v2(command{ID: "o1", Name: "x", Template: "ours"}))
 	incoming := filepath.Join(t.TempDir(), "theirs.json")
-	writeFile(t, incoming, v2(entry{ID: "t1", Name: "x", Command: "theirs"}))
+	writeFile(t, incoming, v2(command{ID: "t1", Name: "x", Template: "theirs"}))
 
 	got := run(t, []string{"import", incoming}, home, "")
 	if got.exitCode != 0 {
@@ -151,10 +151,10 @@ func TestImportCollisionKeepsBoth(t *testing.T) {
 		t.Errorf("stdout = %q", got.stdout)
 	}
 	lib := readLib(t, home)
-	if e := find(lib.Commands, "x"); e == nil || e.Command != "ours" {
+	if e := find(lib.Commands, "x"); e == nil || e.Template != "ours" {
 		t.Errorf("ours = %+v", e)
 	}
-	if e := find(lib.Commands, "x (1)"); e == nil || e.Command != "theirs" {
+	if e := find(lib.Commands, "x (1)"); e == nil || e.Template != "theirs" {
 		t.Errorf("theirs = %+v", e)
 	}
 }
@@ -170,20 +170,20 @@ func TestImportNothingToImport(t *testing.T) {
 }
 
 func TestImportReadsStdin(t *testing.T) {
-	got := run(t, []string{"import", "-"}, "", v2(entry{ID: "t1", Name: "piped", Command: "echo pipe"}))
+	got := run(t, []string{"import", "-"}, "", v2(command{ID: "t1", Name: "piped", Template: "echo pipe"}))
 	if got.exitCode != 0 {
 		t.Fatalf("exit %d: %s", got.exitCode, got.stderr)
 	}
-	if e := find(readLib(t, got.home).Commands, "piped"); e == nil || e.Command != "echo pipe" {
+	if e := find(readLib(t, got.home).Commands, "piped"); e == nil || e.Template != "echo pipe" {
 		t.Errorf("piped = %+v", e)
 	}
 }
 
 func TestImportOverrideReplacesWholesale(t *testing.T) {
 	home := t.TempDir()
-	writeFile(t, filepath.Join(home, "commands.json"), v2(entry{ID: "o1", Name: "mine", Command: "keep?"}))
+	writeFile(t, filepath.Join(home, "commands.json"), v2(command{ID: "o1", Name: "mine", Template: "keep?"}))
 	incoming := filepath.Join(t.TempDir(), "theirs.json")
-	writeFile(t, incoming, v2(entry{ID: "t1", Name: "theirs", Command: "echo t"}))
+	writeFile(t, incoming, v2(command{ID: "t1", Name: "theirs", Template: "echo t"}))
 
 	got := run(t, []string{"import", incoming, "--override"}, home, "")
 	if got.exitCode != 0 {
@@ -203,7 +203,7 @@ func TestImportOverrideReplacesWholesale(t *testing.T) {
 
 func TestImportInvalidFileAbortsAllOrNothing(t *testing.T) {
 	home := t.TempDir()
-	writeFile(t, filepath.Join(home, "commands.json"), v2(entry{ID: "o1", Name: "keep", Command: "ls"}))
+	writeFile(t, filepath.Join(home, "commands.json"), v2(command{ID: "o1", Name: "keep", Template: "ls"}))
 	incoming := filepath.Join(t.TempDir(), "bad.json")
 	writeFile(t, incoming, `{"version": 99, "commands": []}`)
 
@@ -214,7 +214,7 @@ func TestImportInvalidFileAbortsAllOrNothing(t *testing.T) {
 	if !strings.Contains(got.stderr, "bad.json") {
 		t.Errorf("stderr = %q", got.stderr)
 	}
-	if e := find(readLib(t, home).Commands, "keep"); e == nil || e.Command != "ls" {
+	if e := find(readLib(t, home).Commands, "keep"); e == nil || e.Template != "ls" {
 		t.Error("the library was modified by a failed import")
 	}
 }
@@ -242,7 +242,7 @@ func TestOwnV1LibraryIsRefusedNotMigrated(t *testing.T) {
 	v1 := `{"version":1,"commands":{"legacy":{"command":"echo old"}}}`
 	writeFile(t, filepath.Join(home, "commands.json"), v1)
 	incoming := filepath.Join(t.TempDir(), "theirs.json")
-	writeFile(t, incoming, v2(entry{ID: "t1", Name: "fresh", Command: "echo new"}))
+	writeFile(t, incoming, v2(command{ID: "t1", Name: "fresh", Template: "echo new"}))
 
 	got := run(t, []string{"import", incoming}, home, "")
 	if got.exitCode == 0 {

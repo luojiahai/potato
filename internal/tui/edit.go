@@ -47,15 +47,15 @@ type editScreen struct {
 	tried bool
 }
 
-func newEditScreen(m *Model, entry *library.Entry) *editScreen {
+func newEditScreen(m *Model, command *library.Command) *editScreen {
 	s := &editScreen{}
 	var values [fieldCount]string
-	if entry != nil {
-		s.id = entry.ID
-		values[fieldName] = entry.Name
-		values[fieldCommand] = entry.Command
-		if entry.Description != nil {
-			values[fieldDescription] = *entry.Description
+	if command != nil {
+		s.id = command.ID
+		values[fieldName] = command.Name
+		values[fieldCommand] = command.Template
+		if command.Description != nil {
+			values[fieldDescription] = *command.Description
 		}
 	}
 	for _, value := range values {
@@ -75,16 +75,30 @@ func (s *editScreen) setFocus(i int) {
 	s.inputs[s.focus].Focus()
 }
 
+// collision is the warning for a name another Command already holds, or "". It
+// is the one problem worth saying before a save is even attempted — the user
+// cannot see it coming — so the view raises it on its own and `problem` reports
+// it in turn, both from here so there is one wording for the one rule.
+//
+// The rule itself is the Library's — asking library.NameTaken is what keeps the
+// warning and the refusal from being able to disagree. The wording stays
+// potato's, because the Library phrases its refusals for a file and this is a
+// sentence under a field.
+func (s *editScreen) collision(m *Model) string {
+	name := strings.TrimSpace(s.value(fieldName))
+	if name == "" || !library.NameTaken(m.lib, name, s.id) {
+		return ""
+	}
+	return fmt.Sprintf("'%s' already exists", name)
+}
+
 // problem is the first reason this Command cannot be saved, or "".
 func (s *editScreen) problem(m *Model) string {
-	name := strings.TrimSpace(s.value(fieldName))
-	if name == "" {
+	if strings.TrimSpace(s.value(fieldName)) == "" {
 		return "Name is required"
 	}
-	// The rule is the Library's — asking it here is what keeps the warning and
-	// the refusal from being able to disagree. The wording stays potato's.
-	if library.NameTaken(m.lib, name, s.id) {
-		return fmt.Sprintf("'%s' already exists", name)
+	if taken := s.collision(m); taken != "" {
+		return taken
 	}
 	if strings.TrimSpace(s.value(fieldCommand)) == "" {
 		return "Command is required"
@@ -133,7 +147,7 @@ func (s *editScreen) save(m *Model) tea.Cmd {
 	draft := library.Draft{
 		Name:        s.value(fieldName),
 		Description: s.value(fieldDescription),
-		Command:     s.value(fieldCommand),
+		Template:    s.value(fieldCommand),
 	}
 
 	var (
@@ -221,10 +235,8 @@ func (s *editScreen) view(m *Model) []string {
 
 	// A name collision is worth saying the moment it is typed — it is the one
 	// problem the user cannot see coming. The rest wait for a refused save.
-	warning := ""
-	if name := strings.TrimSpace(s.value(fieldName)); name != "" && library.NameTaken(m.lib, name, s.id) {
-		warning = fmt.Sprintf("'%s' already exists", name)
-	} else if s.tried {
+	warning := s.collision(m)
+	if warning == "" && s.tried {
 		warning = s.problem(m)
 	}
 	var bottom []string

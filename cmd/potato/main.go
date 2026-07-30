@@ -139,7 +139,10 @@ func runImport(args []string) {
 		die(err.Error())
 	}
 
-	result := importer.Merge(ours, theirs)
+	result, err := importer.Merge(ours, theirs)
+	if err != nil {
+		die(err.Error())
+	}
 	if err := library.Save(paths.Commands(), result.Merged); err != nil {
 		die(err.Error())
 	}

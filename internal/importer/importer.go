@@ -7,6 +7,8 @@
 package importer
 
 import (
+	"fmt"
+
 	"github.com/luojiahai/potato/internal/library"
 )
 
@@ -33,35 +35,41 @@ type Result struct {
 // library.FreeName the right question to ask, and asking it per Command rather
 // than seeding a set up front is what keeps this loop free of its own copy of
 // the uniqueness rule.
-func Merge(ours, theirs library.Library) Result {
+//
+// It fails rather than skipping a Command the Library refuses. `theirs` came
+// from library.Parse, so its Commands are already in the normalised form Add
+// accepts and FreeName has just resolved the only other thing Add refuses —
+// which makes a refusal here a bug in one of those three, not something a user
+// can hand us. But "nothing is lost" is what `--merge` promises (CONTEXT.md,
+// Import), and a merge that quietly dropped one and reported success would break
+// that promise in the one direction the user cannot see. Failing means the caller
+// dies before writing, so the Library on disk keeps every Command it had.
+func Merge(ours, theirs library.Library) (Result, error) {
 	merged := ours
 	result := Result{Added: []string{}, Renamed: []Rename{}}
 
-	for _, entry := range theirs.Commands {
-		name := library.FreeName(merged, entry.Name)
+	for _, command := range theirs.Commands {
+		name := library.FreeName(merged, command.Name)
 
-		draft := library.Draft{Name: name, Command: entry.Command, Extra: entry.Extra}
-		if entry.Description != nil {
-			draft.Description = *entry.Description
+		draft := library.Draft{Name: name, Template: command.Template, Extra: command.Extra}
+		if command.Description != nil {
+			draft.Description = *command.Description
 		}
 		next, err := library.Add(merged, draft)
 		if err != nil {
-			// Unreachable: `theirs` came from library.Parse, so every Command in
-			// it has a non-empty name and command, and FreeName just resolved
-			// the only other thing Add refuses. Skipping rather than failing
-			// keeps Merge total — and the report is written after the Add, so a
-			// Command that was not taken is not reported as taken.
-			continue
+			return Result{}, fmt.Errorf("cannot import %q: %w", command.Name, err)
 		}
 		merged = next
 
-		if name != entry.Name {
-			result.Renamed = append(result.Renamed, Rename{From: entry.Name, To: name})
+		// Reported after the Add, so a Command that was not taken cannot be
+		// reported as taken.
+		if name != command.Name {
+			result.Renamed = append(result.Renamed, Rename{From: command.Name, To: name})
 		} else {
 			result.Added = append(result.Added, name)
 		}
 	}
 
 	result.Merged = merged
-	return result
+	return result, nil
 }

@@ -13,17 +13,17 @@ import (
 
 func describe(s string) *string { return &s }
 
-var commands = []library.Entry{
-	{ID: "c1", Name: "deploy prod", Command: "ssh prod-1 deploy.sh", Description: describe("Roll out to production")},
-	{ID: "c2", Name: "tail logs", Command: "aws logs tail /ecs/api --follow", Description: describe("Tail ECS logs")},
-	{ID: "c3", Name: "docker nuke", Command: "docker system prune -af", Description: describe("Remove unused containers")},
-	{ID: "c4", Name: "list ports", Command: "lsof -iTCP -sTCP:LISTEN", Description: describe("Show listening processes")},
+var commands = []library.Command{
+	{ID: "c1", Name: "deploy prod", Template: "ssh prod-1 deploy.sh", Description: describe("Roll out to production")},
+	{ID: "c2", Name: "tail logs", Template: "aws logs tail /ecs/api --follow", Description: describe("Tail ECS logs")},
+	{ID: "c3", Name: "docker nuke", Template: "docker system prune -af", Description: describe("Remove unused containers")},
+	{ID: "c4", Name: "list ports", Template: "lsof -iTCP -sTCP:LISTEN", Description: describe("Show listening processes")},
 }
 
-func names(entries []library.Entry) []string {
-	out := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		out = append(out, entry.Name)
+func names(commands []library.Command) []string {
+	out := make([]string, 0, len(commands))
+	for _, command := range commands {
+		out = append(out, command.Name)
 	}
 	return out
 }
@@ -85,11 +85,11 @@ func TestNameHitOutranksDescriptionHit(t *testing.T) {
 }
 
 func TestDescriptionHitOutranksCommandHit(t *testing.T) {
-	entries := []library.Entry{
-		{ID: "a", Name: "a", Command: "echo listening"},
-		{ID: "b", Name: "b", Command: "echo x", Description: describe("listening things")},
+	commands := []library.Command{
+		{ID: "a", Name: "a", Template: "echo listening"},
+		{ID: "b", Name: "b", Template: "echo x", Description: describe("listening things")},
 	}
-	got := Commands(entries, state.State{}, "listening")
+	got := Commands(commands, state.State{}, "listening")
 	if got[0].Name != "b" {
 		t.Errorf("got %q first, want 'b'", got[0].Name)
 	}

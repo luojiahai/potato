@@ -31,18 +31,18 @@ func fixtureDeps() Deps {
 	return Deps{
 		Library: library.Library{
 			Version: 2,
-			Commands: []library.Entry{
+			Commands: []library.Command{
 				{
 					ID: "id-deploy", Name: "deploy prod",
 					Description: description("Roll out to production"),
-					Command:     "ssh {{host=prod-1}} 'deploy.sh'",
+					Template:    "ssh {{host=prod-1}} 'deploy.sh'",
 				},
 				{
 					ID: "id-ports", Name: "list ports",
 					Description: description("Show listening processes"),
-					Command:     "lsof -iTCP -sTCP:LISTEN",
+					Template:    "lsof -iTCP -sTCP:LISTEN",
 				},
-				{ID: "id-tail", Name: "tail logs", Command: "tail -f {{file}} | grep {{pattern=error}}"},
+				{ID: "id-tail", Name: "tail logs", Template: "tail -f {{file}} | grep {{pattern=error}}"},
 			},
 		},
 		State: state.State{
@@ -103,11 +103,11 @@ func emptyLibrary() library.Library { return library.Library{Version: 2} }
 // longCommandLibrary holds one Command too long for the detail strip, so the
 // strip's cap and its truncation marker are both exercised. Sized to wrap
 // over exactly three rows of the strip at eighty columns — with its five
-// Placeholders, the fullest entry the strip there can hold whole.
+// Placeholders, the fullest command the strip there can hold whole.
 func longCommandLibrary() library.Library {
-	return library.Library{Version: 2, Commands: []library.Entry{{
+	return library.Library{Version: 2, Commands: []library.Command{{
 		ID: "id-long", Name: "rsync everything",
-		Command: "rsync -avz --delete --exclude '.git' --exclude 'node_modules' " +
+		Template: "rsync -avz --delete --exclude '.git' --exclude 'node_modules' " +
 			"--progress -e 'ssh -p {{port=22}}' ./{{src=dist}}/ {{user=deploy}}@{{host}}:/srv/{{app}}/",
 	}}}
 }
@@ -115,10 +115,10 @@ func longCommandLibrary() library.Library {
 func longLibrary() library.Library {
 	lib := library.Library{Version: 2}
 	for i := 0; i < 15; i++ {
-		lib.Commands = append(lib.Commands, library.Entry{
-			ID:      fmt.Sprintf("id-%d", i),
-			Name:    fmt.Sprintf("command number %d", i),
-			Command: fmt.Sprintf("echo %d", i),
+		lib.Commands = append(lib.Commands, library.Command{
+			ID:       fmt.Sprintf("id-%d", i),
+			Name:     fmt.Sprintf("command number %d", i),
+			Template: fmt.Sprintf("echo %d", i),
 		})
 	}
 	return lib
@@ -388,7 +388,7 @@ func TestTheListKeepsWithinItsRowBudget(t *testing.T) {
 		// is the marker that the strip is present. An overrun cuts from the
 		// bottom of the frame, so what to check for is the strip's *last* row
 		// — the Placeholders, or the ellipsis a strip too short for the whole
-		// entry ends in — not its first.
+		// command ends in — not its first.
 		if !strings.Contains(frame, labelName) {
 			continue // too short for the strip
 		}

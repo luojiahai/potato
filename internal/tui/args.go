@@ -25,14 +25,14 @@ type argsScreen struct {
 	focus    int
 }
 
-func newArgsScreen(m *Model, entry *library.Entry) *argsScreen {
-	ps := placeholders.Parse(entry.Command)
+func newArgsScreen(m *Model, command *library.Command) *argsScreen {
+	ps := placeholders.Parse(command.Template)
 	s := &argsScreen{
-		id:       entry.ID,
-		name:     entry.Name,
-		command:  entry.Command,
+		id:       command.ID,
+		name:     command.Name,
+		command:  command.Template,
 		ps:       ps,
-		lastArgs: m.st[entry.ID].Args,
+		lastArgs: m.st[command.ID].Args,
 	}
 	for _, p := range ps {
 		input := newField()

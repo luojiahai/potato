@@ -218,81 +218,77 @@ func (m *Model) quit() tea.Cmd {
 	return tea.Quit
 }
 
-func (m *Model) rememberUse(id string, args map[string]string) tea.Cmd {
+func (m *Model) rememberUse(id string, args map[string]string) error {
 	return m.updateState(state.RecordUse(m.st, id, args, m.deps.Now()))
 }
 
-// updateLibrary and updateState adopt the new value and write it out, returning
-// the flash a failed write earns.
+// updateLibrary and updateState adopt the new value and write it out, reporting
+// what the write did rather than flashing it. Raising the flash is finish's, so
+// an action that writes both files raises exactly one — see finish.
 //
 // The in-memory value is kept either way. A write that failed has not lost the
 // user their edit, and rolling it back would throw away what they typed to
 // report a problem with the disk — so the frame shows the change and the flash
 // says it is not saved yet.
-func (m *Model) updateLibrary(next library.Library) tea.Cmd {
+func (m *Model) updateLibrary(next library.Library) error {
 	m.lib = next
 	if m.deps.SaveLibrary == nil {
 		return nil
 	}
-	return m.saveFailed(m.deps.SaveLibrary(next))
+	return m.deps.SaveLibrary(next)
 }
 
-func (m *Model) updateState(next state.State) tea.Cmd {
+func (m *Model) updateState(next state.State) error {
 	m.st = next
 	if m.deps.SaveState == nil {
 		return nil
 	}
-	return m.saveFailed(m.deps.SaveState(next))
-}
-
-// saveFailed is the flash a write error earns, or nil. It outlasts the ordinary
-// flash — "Deleted 'x'" is a confirmation you can miss without cost, and this
-// is not.
-func (m *Model) saveFailed(err error) tea.Cmd {
-	if err == nil {
-		return nil
-	}
-	return m.setFlash("⚠ Not saved: "+err.Error(), 6000*time.Millisecond)
+	return m.deps.SaveState(next)
 }
 
 // finish reports an action's outcome: the first failure among the writes it
-// made, or the action's own confirmation. saveFailed has already put a failure
-// on screen, so all this decides is which flash gets to stand.
+// made, or the action's own confirmation if they all wrote.
 //
-// The confirmation is a message rather than a Cmd because setting a flash is a
-// side effect: taking both as Cmds would raise the confirmation on the way to
-// choosing the failure, and the failure would return a command for a flash that
-// had already been overwritten.
-func (m *Model) finish(message string, saves ...tea.Cmd) tea.Cmd {
-	for _, save := range saves {
-		if save != nil {
-			return save
+// It takes errors rather than the flashes for them because setting a flash is a
+// side effect, not a value — m.flash is assigned the moment setFlash is called.
+// An action that writes both files and has both fail would otherwise leave the
+// *last* failure's text on screen while returning the *first* one's timer, and
+// on a delete that means being told about state.json — the disposable cache —
+// while commands.json is the file that did not get written. One failure is
+// chosen here, then raised, so the text and the timer are always the same one.
+//
+// A failure outlasts the ordinary flash: "Deleted 'x'" is a confirmation you can
+// miss without cost, and this is not.
+func (m *Model) finish(message string, writes ...error) tea.Cmd {
+	for _, err := range writes {
+		if err != nil {
+			return m.setFlash("⚠ Not saved: "+err.Error(), 6000*time.Millisecond)
 		}
 	}
 	return m.flashDefault(message)
 }
 
 func (m *Model) run(id string, values map[string]string) tea.Cmd {
-	entry, ok := library.Find(m.lib, id)
+	command, ok := library.Find(m.lib, id)
 	if !ok {
 		return nil
 	}
 	// A failed State write is not worth reporting here: the hand-off is what
 	// the user came for and potato is closing, so the flash would be erased by
 	// the same frame that draws it. State is disposable; the command is not.
-	m.rememberUse(id, values)
-	m.handoff = renderCommand(entry.Command, values)
+	_ = m.rememberUse(id, values)
+	m.handoff = renderCommand(command.Template, values)
 	return m.quit()
 }
 
 func (m *Model) copy(id string, values map[string]string) tea.Cmd {
-	entry, ok := library.Find(m.lib, id)
+	command, ok := library.Find(m.lib, id)
 	if !ok {
 		return nil
 	}
 	saved := m.rememberUse(id, values)
 	if m.deps.Copy != nil {
-		m.deps.Copy(renderCommand(entry.Command, values))
+		m.deps.Copy(renderCommand(command.Template, values))
 	}
 	return m.finish("Copied to clipboard", saved)
 }

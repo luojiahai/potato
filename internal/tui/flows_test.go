@@ -21,6 +21,9 @@ type recorder struct {
 	// cannot write. The value is still recorded — a failed save is one that was
 	// attempted.
 	failWith error
+	// failStateWith overrides failWith for the State write alone, so a test can
+	// tell the two failures apart when an action writes both files and both fail.
+	failStateWith error
 }
 
 func harness(t *testing.T) (*Model, *recorder) {
@@ -33,6 +36,9 @@ func harness(t *testing.T) (*Model, *recorder) {
 	}
 	deps.SaveState = func(s state.State) error {
 		rec.states = append(rec.states, s)
+		if rec.failStateWith != nil {
+			return rec.failStateWith
+		}
 		return rec.failWith
 	}
 	deps.Copy = func(text string) { rec.copied = append(rec.copied, text) }
@@ -127,8 +133,8 @@ func TestAddHandsTheFormsFieldsToTheLibrary(t *testing.T) {
 	if !ok {
 		t.Fatalf("the typed name is not in the saved Library: %+v", saved.Commands)
 	}
-	if added.Command != "echo new" {
-		t.Errorf("command = %q, want the command field's value", added.Command)
+	if added.Template != "echo new" {
+		t.Errorf("command = %q, want the command field's value", added.Template)
 	}
 	if added.Description == nil || *added.Description != "a description" {
 		t.Errorf("description = %v, want the description field's value", added.Description)
@@ -147,12 +153,12 @@ func TestEditSavesTheRenamedName(t *testing.T) {
 	if len(rec.libraries) != 1 {
 		t.Fatalf("saved %d libraries, want 1", len(rec.libraries))
 	}
-	entry, ok := library.Find(rec.libraries[0], "id-deploy")
+	command, ok := library.Find(rec.libraries[0], "id-deploy")
 	if !ok {
 		t.Fatal("the edited Command is gone from the saved Library")
 	}
-	if entry.Name != "renamed" {
-		t.Errorf("name = %q", entry.Name)
+	if command.Name != "renamed" {
+		t.Errorf("name = %q", command.Name)
 	}
 }
 
@@ -180,13 +186,13 @@ func TestAFailedSaveSaysSoInsteadOfFlashingSaved(t *testing.T) {
 	}
 }
 
-func findByName(lib library.Library, name string) (library.Entry, bool) {
-	for _, entry := range lib.Commands {
-		if entry.Name == name {
-			return entry, true
+func findByName(lib library.Library, name string) (library.Command, bool) {
+	for _, command := range lib.Commands {
+		if command.Name == name {
+			return command, true
 		}
 	}
-	return library.Entry{}, false
+	return library.Command{}, false
 }
 
 func TestEditRefusesADuplicateName(t *testing.T) {
@@ -279,8 +285,8 @@ func TestDeleteConfirmRemovesTheCommand(t *testing.T) {
 	if len(rec.libraries) != 1 {
 		t.Fatalf("saved %d libraries, want 1", len(rec.libraries))
 	}
-	for _, entry := range rec.libraries[0].Commands {
-		if entry.ID == "id-deploy" {
+	for _, command := range rec.libraries[0].Commands {
+		if command.ID == "id-deploy" {
 			t.Error("the Command was not removed")
 		}
 	}
@@ -499,9 +505,9 @@ func TestEscapeQuitsWithoutHandingOff(t *testing.T) {
 	}
 }
 
-// Deleting a Command drops its State entry too. State is disposable, so this
+// Deleting a Command drops its State command too. State is disposable, so this
 // costs nothing when it is missed — which is exactly why it was missed, and why
-// it is worth pinning: the entry used to survive in state.json forever.
+// it is worth pinning: the command used to survive in state.json forever.
 func TestDeleteAlsoForgetsTheCommandsState(t *testing.T) {
 	m, rec := harness(t)
 	if _, ok := m.st["id-deploy"]; !ok {
@@ -514,5 +520,28 @@ func TestDeleteAlsoForgetsTheCommandsState(t *testing.T) {
 	}
 	if _, ok := rec.states[len(rec.states)-1]["id-deploy"]; ok {
 		t.Error("the deleted Command's State entry was kept")
+	}
+}
+
+// A delete writes both files, and when both fail the Library's failure is the
+// one the user is shown: commands.json is their data, state.json is a cache
+// CONTEXT.md calls safe to delete. Raising each flash as its write returned put
+// the *last* failure's text on screen — so the report named the cache and left
+// the user thinking their Command was gone.
+func TestADeleteThatFailsBothWritesReportsTheLibraryNotTheCache(t *testing.T) {
+	m, rec := harness(t)
+	rec.failWith = errors.New("commands.json is read-only")
+	rec.failStateWith = errors.New("state.json is read-only")
+	press(m, []string{"tab", "d", "y"})
+
+	frame := render(t, m)
+	if strings.Contains(frame, "Deleted") {
+		t.Errorf("a delete that wrote nothing flashed success:\n%s", frame)
+	}
+	if !strings.Contains(frame, "commands.json is read-only") {
+		t.Errorf("the Library's failure is not the one reported:\n%s", frame)
+	}
+	if strings.Contains(frame, "state.json is read-only") {
+		t.Errorf("the cache's failure won over the Library's:\n%s", frame)
 	}
 }

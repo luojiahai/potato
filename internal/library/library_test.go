@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Library v2: an array of UUID-identified entries { id, name, description?,
+// Library v2: an array of UUID-identified commands { id, name, description?,
 // command }; name is unique and case-sensitive, id is loosely validated
 // (non-empty + unique). Version-strict — v1 and unknown versions fail loud.
 // Unknown fields tolerated and preserved; saves are 2-space pretty, array
@@ -24,15 +24,15 @@ func TestParseValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	entry := lib.Commands[0]
-	if entry.Name != "deploy prod" {
-		t.Errorf("name = %q", entry.Name)
+	command := lib.Commands[0]
+	if command.Name != "deploy prod" {
+		t.Errorf("name = %q", command.Name)
 	}
-	if entry.Command != "ssh {{host=prod-1}} 'deploy.sh'" {
-		t.Errorf("command = %q", entry.Command)
+	if command.Template != "ssh {{host=prod-1}} 'deploy.sh'" {
+		t.Errorf("command = %q", command.Template)
 	}
-	if entry.Description == nil || *entry.Description != "Roll out to production" {
-		t.Errorf("description = %v", entry.Description)
+	if command.Description == nil || *command.Description != "Roll out to production" {
+		t.Errorf("description = %v", command.Description)
 	}
 }
 
@@ -53,13 +53,15 @@ func TestParseFailsLoud(t *testing.T) {
 		{"v1 is rejected version-strict", `{"version": 1, "commands": {}}`},
 		{"future version", `{"version": 3, "commands": []}`},
 		{"commands not an array", `{"version": 2, "commands": {}}`},
-		{"entry missing id", `{"version": 2, "commands": [{"name": "x", "command": "ls"}]}`},
-		{"entry with empty id", `{"version": 2, "commands": [{"id": "", "name": "x", "command": "ls"}]}`},
+		{"command missing id", `{"version": 2, "commands": [{"name": "x", "command": "ls"}]}`},
+		{"command with empty id", `{"version": 2, "commands": [{"id": "", "name": "x", "command": "ls"}]}`},
 		{"duplicate id", `{"version": 2, "commands": [{"id":"a","name":"x","command":"ls"},{"id":"a","name":"y","command":"pwd"}]}`},
 		{"duplicate name", `{"version": 2, "commands": [{"id":"a","name":"x","command":"ls"},{"id":"b","name":"x","command":"pwd"}]}`},
 		{"name empty after trimming", `{"version": 2, "commands": [{"id":"a","name":"  ","command":"ls"}]}`},
-		{"entry missing command", `{"version": 2, "commands": [{"id":"a","name":"x"}]}`},
-		{"entry with empty command", `{"version": 2, "commands": [{"id":"a","name":"x","command":""}]}`},
+		{"command missing command", `{"version": 2, "commands": [{"id":"a","name":"x"}]}`},
+		{"command with empty command", `{"version": 2, "commands": [{"id":"a","name":"x","command":""}]}`},
+		{"command that is only whitespace", `{"version": 2, "commands": [{"id":"a","name":"x","command":"   "}]}`},
+		{"two names that are the same once trimmed", `{"version": 2, "commands": [{"id":"a","name":"x","command":"ls"},{"id":"b","name":" x ","command":"pwd"}]}`},
 		{"non-string description", `{"version": 2, "commands": [{"id":"a","name":"x","command":"ls","description":3}]}`},
 	}
 	for _, tc := range cases {
@@ -75,6 +77,33 @@ func TestParseFailsLoud(t *testing.T) {
 				t.Errorf("error does not name the source: %v", err)
 			}
 		})
+	}
+}
+
+// Parse normalises what it decodes, so a Command that came out of a file is
+// indistinguishable from one Add made. That is what lets NameTaken, FreeName and
+// Add agree about a name that arrived padded — see importer's
+// TestMergeKeepsACommandWhoseNameIsPaddedInTheFile, which is the merge that
+// silently dropped a Command while the two disagreed.
+//
+// The template is the exception: leading and trailing whitespace can matter
+// inside a shell command, so it is stored as written.
+func TestParseNormalisesTheNameAndTheDescription(t *testing.T) {
+	lib, err := Parse(`{"version":2,"commands":[
+		{"id":"a","name":"  padded  ","description":"   ","command":"  ls -la  "}
+	]}`, "f")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := lib.Commands[0]
+	if got.Name != "padded" {
+		t.Errorf("name = %q, want it trimmed", got.Name)
+	}
+	if got.Description != nil {
+		t.Errorf("description = %q, want an all-whitespace one dropped", *got.Description)
+	}
+	if got.Template != "  ls -la  " {
+		t.Errorf("command = %q, want it stored as written", got.Template)
 	}
 }
 
@@ -107,7 +136,7 @@ func TestSerializeRoundTripsUnknownFields(t *testing.T) {
 		t.Errorf("top-level unknown field lost: %q", out.Color)
 	}
 	if out.Commands[0].Note != "keep me" {
-		t.Errorf("entry unknown field lost: %q", out.Commands[0].Note)
+		t.Errorf("command unknown field lost: %q", out.Commands[0].Note)
 	}
 }
 
@@ -157,8 +186,8 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	lib = add(t, lib, Draft{Name: "first", Command: "ls"})
-	lib = add(t, lib, Draft{Name: "second", Command: "pwd"})
+	lib = add(t, lib, Draft{Name: "first", Template: "ls"})
+	lib = add(t, lib, Draft{Name: "second", Template: "pwd"})
 	if err := Save(file, lib); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -167,8 +196,8 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	var names []string
-	for _, entry := range loaded.Commands {
-		names = append(names, entry.Name)
+	for _, command := range loaded.Commands {
+		names = append(names, command.Name)
 	}
 	if strings.Join(names, ",") != "first,second" {
 		t.Errorf("got %v, want [first second]", names)
@@ -187,8 +216,8 @@ func add(t *testing.T, lib Library, d Draft) Library {
 }
 
 func TestAddMintsAnIDAndAppends(t *testing.T) {
-	lib := add(t, Empty(), Draft{Name: "first", Command: "ls"})
-	lib = add(t, lib, Draft{Name: "second", Command: "pwd"})
+	lib := add(t, Empty(), Draft{Name: "first", Template: "ls"})
+	lib = add(t, lib, Draft{Name: "second", Template: "pwd"})
 
 	if len(lib.Commands) != 2 {
 		t.Fatalf("got %d commands, want 2", len(lib.Commands))
@@ -196,9 +225,9 @@ func TestAddMintsAnIDAndAppends(t *testing.T) {
 	if lib.Commands[0].Name != "first" || lib.Commands[1].Name != "second" {
 		t.Errorf("new Commands did not append in order: %+v", lib.Commands)
 	}
-	for _, entry := range lib.Commands {
-		if _, err := uuid.Parse(entry.ID); err != nil {
-			t.Errorf("id %q is not a UUID: %v", entry.ID, err)
+	for _, command := range lib.Commands {
+		if _, err := uuid.Parse(command.ID); err != nil {
+			t.Errorf("id %q is not a UUID: %v", command.ID, err)
 		}
 	}
 	if lib.Commands[0].ID == lib.Commands[1].ID {
@@ -207,8 +236,8 @@ func TestAddMintsAnIDAndAppends(t *testing.T) {
 }
 
 func TestAddDoesNotMutateTheLibraryItWasGiven(t *testing.T) {
-	before := add(t, Empty(), Draft{Name: "first", Command: "ls"})
-	after := add(t, before, Draft{Name: "second", Command: "pwd"})
+	before := add(t, Empty(), Draft{Name: "first", Template: "ls"})
+	after := add(t, before, Draft{Name: "second", Template: "pwd"})
 
 	if len(before.Commands) != 1 {
 		t.Errorf("the original grew to %d commands", len(before.Commands))
@@ -219,16 +248,16 @@ func TestAddDoesNotMutateTheLibraryItWasGiven(t *testing.T) {
 }
 
 func TestAddTrimsAndDropsAnEmptyDescription(t *testing.T) {
-	lib := add(t, Empty(), Draft{Name: "  spaced  ", Command: "ls", Description: "   "})
-	entry := lib.Commands[0]
-	if entry.Name != "spaced" {
-		t.Errorf("name = %q, want it trimmed", entry.Name)
+	lib := add(t, Empty(), Draft{Name: "  spaced  ", Template: "ls", Description: "   "})
+	command := lib.Commands[0]
+	if command.Name != "spaced" {
+		t.Errorf("name = %q, want it trimmed", command.Name)
 	}
-	if entry.Description != nil {
-		t.Errorf("description = %q, want absent", *entry.Description)
+	if command.Description != nil {
+		t.Errorf("description = %q, want absent", *command.Description)
 	}
 
-	lib = add(t, lib, Draft{Name: "described", Command: "ls", Description: "  why  "})
+	lib = add(t, lib, Draft{Name: "described", Template: "ls", Description: "  why  "})
 	if got := lib.Commands[1].Description; got == nil || *got != "why" {
 		t.Errorf("description = %v, want a trimmed %q", got, "why")
 	}
@@ -236,7 +265,7 @@ func TestAddTrimsAndDropsAnEmptyDescription(t *testing.T) {
 
 func TestAddCarriesAndClonesExtra(t *testing.T) {
 	extra := map[string]json.RawMessage{"note": json.RawMessage(`"keep me"`)}
-	lib := add(t, Empty(), Draft{Name: "x", Command: "ls", Extra: extra})
+	lib := add(t, Empty(), Draft{Name: "x", Template: "ls", Extra: extra})
 
 	if string(lib.Commands[0].Extra["note"]) != `"keep me"` {
 		t.Errorf("Extra was not carried: %v", lib.Commands[0].Extra)
@@ -250,17 +279,17 @@ func TestAddCarriesAndClonesExtra(t *testing.T) {
 }
 
 func TestAddRefusesWhatParseWouldReject(t *testing.T) {
-	lib := add(t, Empty(), Draft{Name: "taken", Command: "ls"})
+	lib := add(t, Empty(), Draft{Name: "taken", Template: "ls"})
 	for _, tc := range []struct {
 		label string
 		d     Draft
 	}{
-		{"an empty name", Draft{Name: "", Command: "ls"}},
-		{"a whitespace-only name", Draft{Name: "   ", Command: "ls"}},
-		{"an empty command", Draft{Name: "fine", Command: ""}},
-		{"a whitespace-only command", Draft{Name: "fine", Command: "  "}},
-		{"a name already taken", Draft{Name: "taken", Command: "ls"}},
-		{"a name taken after trimming", Draft{Name: "  taken  ", Command: "ls"}},
+		{"an empty name", Draft{Name: "", Template: "ls"}},
+		{"a whitespace-only name", Draft{Name: "   ", Template: "ls"}},
+		{"an empty command", Draft{Name: "fine", Template: ""}},
+		{"a whitespace-only command", Draft{Name: "fine", Template: "  "}},
+		{"a name already taken", Draft{Name: "taken", Template: "ls"}},
+		{"a name taken after trimming", Draft{Name: "  taken  ", Template: "ls"}},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
 			if _, err := Add(lib, tc.d); err == nil {
@@ -271,60 +300,60 @@ func TestAddRefusesWhatParseWouldReject(t *testing.T) {
 }
 
 func TestUpdateKeepsTheIDTheSlotAndExtra(t *testing.T) {
-	lib := add(t, Empty(), Draft{Name: "first", Command: "ls",
+	lib := add(t, Empty(), Draft{Name: "first", Template: "ls",
 		Extra: map[string]json.RawMessage{"note": json.RawMessage(`"mine"`)}})
-	lib = add(t, lib, Draft{Name: "second", Command: "pwd"})
+	lib = add(t, lib, Draft{Name: "second", Template: "pwd"})
 	id := lib.Commands[0].ID
 
-	next, err := Update(lib, id, Draft{Name: "renamed", Command: "ls -la"})
+	next, err := Update(lib, id, Draft{Name: "renamed", Template: "ls -la"})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	if len(next.Commands) != 2 {
 		t.Fatalf("got %d commands, want 2", len(next.Commands))
 	}
-	entry := next.Commands[0]
-	if entry.ID != id {
-		t.Errorf("id changed to %q", entry.ID)
+	command := next.Commands[0]
+	if command.ID != id {
+		t.Errorf("id changed to %q", command.ID)
 	}
-	if entry.Name != "renamed" || entry.Command != "ls -la" {
-		t.Errorf("fields not applied: %+v", entry)
+	if command.Name != "renamed" || command.Template != "ls -la" {
+		t.Errorf("fields not applied: %+v", command)
 	}
 	if next.Commands[1].Name != "second" {
 		t.Error("the rename moved the Command out of its slot")
 	}
 	// The form knows nothing about unknown fields, so it must not be able to
 	// drop them by saving.
-	if string(entry.Extra["note"]) != `"mine"` {
-		t.Errorf("Extra was lost on update: %v", entry.Extra)
+	if string(command.Extra["note"]) != `"mine"` {
+		t.Errorf("Extra was lost on update: %v", command.Extra)
 	}
 }
 
 func TestUpdateAllowsRenamingACommandToItsOwnName(t *testing.T) {
-	lib := add(t, Empty(), Draft{Name: "same", Command: "ls"})
-	if _, err := Update(lib, lib.Commands[0].ID, Draft{Name: "same", Command: "ls -la"}); err != nil {
+	lib := add(t, Empty(), Draft{Name: "same", Template: "ls"})
+	if _, err := Update(lib, lib.Commands[0].ID, Draft{Name: "same", Template: "ls -la"}); err != nil {
 		t.Errorf("a Command could not keep its own name: %v", err)
 	}
 }
 
 func TestUpdateRefusesAnotherCommandsName(t *testing.T) {
-	lib := add(t, Empty(), Draft{Name: "first", Command: "ls"})
-	lib = add(t, lib, Draft{Name: "second", Command: "pwd"})
-	if _, err := Update(lib, lib.Commands[0].ID, Draft{Name: "second", Command: "ls"}); err == nil {
+	lib := add(t, Empty(), Draft{Name: "first", Template: "ls"})
+	lib = add(t, lib, Draft{Name: "second", Template: "pwd"})
+	if _, err := Update(lib, lib.Commands[0].ID, Draft{Name: "second", Template: "ls"}); err == nil {
 		t.Error("expected a refusal")
 	}
 }
 
 func TestUpdateRefusesAnUnknownID(t *testing.T) {
-	lib := add(t, Empty(), Draft{Name: "first", Command: "ls"})
-	if _, err := Update(lib, "nope", Draft{Name: "x", Command: "ls"}); err == nil {
+	lib := add(t, Empty(), Draft{Name: "first", Template: "ls"})
+	if _, err := Update(lib, "nope", Draft{Name: "x", Template: "ls"}); err == nil {
 		t.Error("expected a refusal")
 	}
 }
 
 func TestRemoveDropsOnlyThatCommand(t *testing.T) {
-	lib := add(t, Empty(), Draft{Name: "first", Command: "ls"})
-	lib = add(t, lib, Draft{Name: "second", Command: "pwd"})
+	lib := add(t, Empty(), Draft{Name: "first", Template: "ls"})
+	lib = add(t, lib, Draft{Name: "second", Template: "pwd"})
 	id := lib.Commands[0].ID
 
 	next := Remove(lib, id)
@@ -341,8 +370,8 @@ func TestRemoveDropsOnlyThatCommand(t *testing.T) {
 }
 
 func TestNameTakenHonoursTheException(t *testing.T) {
-	lib := add(t, Empty(), Draft{Name: "first", Command: "ls"})
-	lib = add(t, lib, Draft{Name: "second", Command: "pwd"})
+	lib := add(t, Empty(), Draft{Name: "first", Template: "ls"})
+	lib = add(t, lib, Draft{Name: "second", Template: "pwd"})
 	first, second := lib.Commands[0].ID, lib.Commands[1].ID
 
 	if !NameTaken(lib, "first", "") {
@@ -364,7 +393,7 @@ func TestNameTakenHonoursTheException(t *testing.T) {
 }
 
 func TestFreeNameTakesTheLowestFreeSuffix(t *testing.T) {
-	lib := add(t, Empty(), Draft{Name: "x", Command: "ls"})
+	lib := add(t, Empty(), Draft{Name: "x", Template: "ls"})
 	if got := FreeName(lib, "untaken"); got != "untaken" {
 		t.Errorf("FreeName of a free name = %q", got)
 	}
@@ -372,24 +401,24 @@ func TestFreeNameTakesTheLowestFreeSuffix(t *testing.T) {
 		t.Errorf("FreeName = %q, want %q", got, "x (1)")
 	}
 
-	lib = add(t, lib, Draft{Name: "x (1)", Command: "ls"})
-	lib = add(t, lib, Draft{Name: "x (3)", Command: "ls"})
+	lib = add(t, lib, Draft{Name: "x (1)", Template: "ls"})
+	lib = add(t, lib, Draft{Name: "x (3)", Template: "ls"})
 	if got := FreeName(lib, "x"); got != "x (2)" {
 		t.Errorf("FreeName = %q, want the lowest free %q", got, "x (2)")
 	}
 }
 
 func TestFindReturnsACopy(t *testing.T) {
-	lib := add(t, Empty(), Draft{Name: "first", Command: "ls"})
+	lib := add(t, Empty(), Draft{Name: "first", Template: "ls"})
 	id := lib.Commands[0].ID
 
-	entry, ok := Find(lib, id)
-	if !ok || entry.Name != "first" {
-		t.Fatalf("Find = %+v, %v", entry, ok)
+	command, ok := Find(lib, id)
+	if !ok || command.Name != "first" {
+		t.Fatalf("Find = %+v, %v", command, ok)
 	}
 	// A read is not a way to write: mutating what Find handed back must not
 	// reach the Library, which would be a mutation past Add and Update.
-	entry.Name = "hijacked"
+	command.Name = "hijacked"
 	if lib.Commands[0].Name != "first" {
 		t.Error("Find handed back a pointer into the Library")
 	}
@@ -410,26 +439,26 @@ func TestEveryMutationSequenceStaysReadable(t *testing.T) {
 		label string
 		apply func(Library) Library
 	}{
-		{"add one", func(l Library) Library { return add(t, l, Draft{Name: "alpha", Command: "ls"}) }},
+		{"add one", func(l Library) Library { return add(t, l, Draft{Name: "alpha", Template: "ls"}) }},
 		{"add a described one", func(l Library) Library {
-			return add(t, l, Draft{Name: "beta", Command: "pwd", Description: "why"})
+			return add(t, l, Draft{Name: "beta", Template: "pwd", Description: "why"})
 		}},
 		{"add one carrying unknown fields", func(l Library) Library {
-			return add(t, l, Draft{Name: "gamma", Command: "df -h",
+			return add(t, l, Draft{Name: "gamma", Template: "df -h",
 				Extra: map[string]json.RawMessage{"note": json.RawMessage(`"keep"`)}})
 		}},
 		{"add a colliding name via FreeName", func(l Library) Library {
-			return add(t, l, Draft{Name: FreeName(l, "alpha"), Command: "ls -la"})
+			return add(t, l, Draft{Name: FreeName(l, "alpha"), Template: "ls -la"})
 		}},
 		{"rename the first", func(l Library) Library {
-			next, err := Update(l, l.Commands[0].ID, Draft{Name: "renamed", Command: "ls"})
+			next, err := Update(l, l.Commands[0].ID, Draft{Name: "renamed", Template: "ls"})
 			if err != nil {
 				t.Fatalf("Update: %v", err)
 			}
 			return next
 		}},
 		{"drop a description", func(l Library) Library {
-			next, err := Update(l, l.Commands[1].ID, Draft{Name: "beta", Command: "pwd"})
+			next, err := Update(l, l.Commands[1].ID, Draft{Name: "beta", Template: "pwd"})
 			if err != nil {
 				t.Fatalf("Update: %v", err)
 			}
@@ -456,7 +485,7 @@ func TestEveryMutationSequenceStaysReadable(t *testing.T) {
 		}
 		for i, want := range lib.Commands {
 			got := loaded.Commands[i]
-			if got.ID != want.ID || got.Name != want.Name || got.Command != want.Command {
+			if got.ID != want.ID || got.Name != want.Name || got.Template != want.Template {
 				t.Errorf("after %q, command %d changed on the round trip:\n got %+v\nwant %+v",
 					step.label, i, got, want)
 			}
@@ -469,27 +498,54 @@ func TestEveryMutationSequenceStaysReadable(t *testing.T) {
 // behind. Nothing in potato writes these — that is the point.
 func TestSaveRefusesAnUnreadableLibrary(t *testing.T) {
 	description := "d"
+	blank := "   "
 	for _, tc := range []struct {
 		label string
 		lib   Library
 	}{
-		{"a duplicate name", Library{Version: 2, Commands: []Entry{
-			{ID: "a", Name: "x", Command: "ls"},
-			{ID: "b", Name: "x", Command: "pwd"},
+		{"a duplicate name", Library{Version: 2, Commands: []Command{
+			{ID: "a", Name: "x", Template: "ls"},
+			{ID: "b", Name: "x", Template: "pwd"},
 		}}},
-		{"a duplicate id", Library{Version: 2, Commands: []Entry{
-			{ID: "a", Name: "x", Command: "ls"},
-			{ID: "a", Name: "y", Command: "pwd"},
+		{"a duplicate id", Library{Version: 2, Commands: []Command{
+			{ID: "a", Name: "x", Template: "ls"},
+			{ID: "a", Name: "y", Template: "pwd"},
 		}}},
-		{"an empty id", Library{Version: 2, Commands: []Entry{
-			{ID: "", Name: "x", Command: "ls"},
+		{"an empty id", Library{Version: 2, Commands: []Command{
+			{ID: "", Name: "x", Template: "ls"},
 		}}},
-		{"an empty name", Library{Version: 2, Commands: []Entry{
-			{ID: "a", Name: "  ", Command: "ls", Description: &description},
+		{"an empty name", Library{Version: 2, Commands: []Command{
+			{ID: "a", Name: "  ", Template: "ls", Description: &description},
 		}}},
-		{"an empty command", Library{Version: 2, Commands: []Entry{
-			{ID: "a", Name: "x", Command: ""},
+		{"an empty command", Library{Version: 2, Commands: []Command{
+			{ID: "a", Name: "x", Template: ""},
 		}}},
+		{"a command that is only whitespace", Library{Version: 2, Commands: []Command{
+			{ID: "a", Name: "x", Template: "   "},
+		}}},
+		// Not what Parse rejects but what Parse would not produce: a Command
+		// carrying its name unnormalised is one no mutation could have written,
+		// and one FreeName would misjudge.
+		{"a name still carrying its whitespace", Library{Version: 2, Commands: []Command{
+			{ID: "a", Name: " x ", Template: "ls"},
+		}}},
+		{"a description that is present but empty", Library{Version: 2, Commands: []Command{
+			{ID: "a", Name: "x", Template: "ls", Description: &blank},
+		}}},
+		{"a version potato cannot read", Library{Version: 1, Commands: []Command{
+			{ID: "a", Name: "x", Template: "ls"},
+		}}},
+		// Serialize writes these keys itself. An Extra map holding one would make
+		// it emit the key twice, and JSON resolves a duplicate last-wins — so the
+		// file would read back as something other than what was written.
+		{"an unknown command field colliding with a known one", Library{Version: 2, Commands: []Command{
+			{ID: "a", Name: "x", Template: "ls", Extra: map[string]json.RawMessage{"name": json.RawMessage(`"smuggled"`)}},
+		}}},
+		{"an unknown top-level field colliding with a known one", Library{
+			Version:  2,
+			Commands: []Command{{ID: "a", Name: "x", Template: "ls"}},
+			Extra:    map[string]json.RawMessage{"commands": json.RawMessage(`[]`)},
+		}},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "commands.json")

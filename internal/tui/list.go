@@ -99,11 +99,11 @@ func newField() textinput.Model {
 	return input
 }
 
-func (s *listScreen) results(m *Model) []library.Entry {
+func (s *listScreen) results(m *Model) []library.Command {
 	return search.Commands(m.lib.Commands, m.st, s.input.Value())
 }
 
-func (s *listScreen) selected(m *Model) *library.Entry {
+func (s *listScreen) selected(m *Model) *library.Command {
 	results := s.results(m)
 	if len(results) == 0 {
 		return nil
@@ -211,7 +211,7 @@ func (s *listScreen) run(m *Model) tea.Cmd {
 	if selected == nil {
 		return nil
 	}
-	if len(placeholders.Parse(selected.Command)) > 0 {
+	if len(placeholders.Parse(selected.Template)) > 0 {
 		m.screen = newArgsScreen(m, selected)
 		return nil
 	}
@@ -223,7 +223,7 @@ func (s *listScreen) copy(m *Model) tea.Cmd {
 	if selected == nil {
 		return nil
 	}
-	if len(placeholders.Parse(selected.Command)) > 0 {
+	if len(placeholders.Parse(selected.Template)) > 0 {
 		m.screen = newArgsScreen(m, selected)
 		return m.flashDefault("Needs args — fill in, then " + keymap.args.Copy.Help().Key)
 	}
@@ -245,14 +245,14 @@ func (s *listScreen) move(m *Model, delta int) {
 // separate lifetimes — see docs/adr/0002 — and this is the one place that knows
 // a Command is being destroyed rather than merely edited.
 func (s *listScreen) delete(m *Model) tea.Cmd {
-	entry, ok := library.Find(m.lib, s.confirming)
+	command, ok := library.Find(m.lib, s.confirming)
 	s.confirming = ""
 	if !ok {
 		return nil
 	}
-	saved := m.updateLibrary(library.Remove(m.lib, entry.ID))
-	forgotten := m.updateState(state.Forget(m.st, entry.ID))
-	return m.finish(fmt.Sprintf("Deleted '%s'", entry.Name), saved, forgotten)
+	saved := m.updateLibrary(library.Remove(m.lib, command.ID))
+	forgotten := m.updateState(state.Forget(m.st, command.ID))
+	return m.finish(fmt.Sprintf("Deleted '%s'", command.Name), saved, forgotten)
 }
 
 func (s *listScreen) keys(*Model) []footerKey {
@@ -306,17 +306,17 @@ func (s *listScreen) content(m *Model) []string {
 	// an arrow key can move the strip's rule or the list's bottom edge.
 	budget, detailRows := regions(body, len(top))
 	var rows []string
-	var entry *library.Entry
+	var command *library.Command
 	if len(results) == 0 {
 		rows = indent(s.noMatch(query, width-2))
 		if len(rows) > budget {
 			rows = rows[:budget]
 		}
 	} else {
-		entry = &results[sel]
+		command = &results[sel]
 		rows = s.listRows(m, results, sel, budget, width, query)
 	}
-	detail := s.detail(entry, detailRows, width)
+	detail := s.detail(command, detailRows, width)
 	for len(rows) < budget {
 		rows = append(rows, "")
 	}
@@ -342,7 +342,7 @@ func regions(body, top int) (list, detail int) {
 // field used to cost three, two of them border. The count yields to the query
 // as the row narrows: what you are typing outranks how much it found, and the
 // sort order outranks neither.
-func (s *listScreen) searchRow(m *Model, results []library.Entry, width int) string {
+func (s *listScreen) searchRow(m *Model, results []library.Command, width int) string {
 	// The glyph carries focus the way an edit screen's section label does:
 	// accent when this field will receive the next keystroke, muted when the
 	// list below has taken the keyboard. The caret says the same thing — a
@@ -375,15 +375,15 @@ func (s *listScreen) searchRow(m *Model, results []library.Entry, width int) str
 // is blank rows under a short Command, and blank rows cost nothing — they are
 // not fenced in a box, so they read as space rather than as something missing
 // — while a Command too long for the strip is cut with an ellipsis. With no
-// entry to show it keeps its rows and shows nothing, so a query that filters
+// command to show it keeps its rows and shows nothing, so a query that filters
 // everything out cannot move the rule either.
-func (s *listScreen) detail(entry *library.Entry, rows, width int) []string {
+func (s *listScreen) detail(command *library.Command, rows, width int) []string {
 	if rows < 1 {
 		return nil
 	}
 	var content []string
-	if entry != nil {
-		content = s.detailContent(*entry, width-2)
+	if command != nil {
+		content = s.detailContent(*command, width-2)
 		if len(content) > rows {
 			content = append(content[:rows-1:rows-1], dimStyle.Render("…"))
 		}
@@ -414,7 +414,7 @@ var detailGutter = 2 + max(len(labelName), len(labelDescription), len(labelComma
 // what it is for, what it is, and what it will ask for — each field headed by
 // its label in the shared gutter. When it was last used lives on the list row
 // instead, where it can be compared against its neighbours.
-func (s *listScreen) detailContent(entry library.Entry, inner int) []string {
+func (s *listScreen) detailContent(command library.Command, inner int) []string {
 	value := max(1, inner-detailGutter)
 	var content []string
 	add := func(label string, rows []string) {
@@ -429,19 +429,19 @@ func (s *listScreen) detailContent(entry library.Entry, inner int) []string {
 	}
 
 	var name []string
-	for _, line := range wrapLines(entry.Name, value) {
+	for _, line := range wrapLines(command.Name, value) {
 		name = append(name, titleStyle().Render(line))
 	}
 	add(labelName, name)
-	if entry.Description != nil && *entry.Description != "" {
+	if command.Description != nil && *command.Description != "" {
 		var desc []string
-		for _, line := range wrapLines(*entry.Description, value) {
+		for _, line := range wrapLines(*command.Description, value) {
 			desc = append(desc, dimStyle.Render(line))
 		}
 		add(labelDescription, desc)
 	}
-	add(labelCommand, commandBlock(entry.Command, value))
-	if ps := placeholders.Parse(entry.Command); len(ps) > 0 {
+	add(labelCommand, commandBlock(command.Template, value))
+	if ps := placeholders.Parse(command.Template); len(ps) > 0 {
 		add(labelPlaceholders, placeholderRows(ps, value))
 	}
 	return content
@@ -468,17 +468,17 @@ const previewFloor = 24
 const listRegionRows = 7
 
 // detailMaxRows caps the detail strip's content: ten rows is the fullest
-// entry it is asked to carry — a name, a description, a command wrapped over
+// command it is asked to carry — a name, a description, a command wrapped over
 // three rows, and five Placeholders.
 const detailMaxRows = 10
 
-func (s *listScreen) columns(m *Model, results []library.Entry, width int) rowLayout {
+func (s *listScreen) columns(m *Model, results []library.Command, width int) rowLayout {
 	meta, longest := 0, 0
-	for _, entry := range results {
-		if _, n := rowMeta(m, entry, false); n > meta {
+	for _, command := range results {
+		if _, n := rowMeta(m, command, false); n > meta {
 			meta = n
 		}
-		if n := ansi.StringWidth(entry.Name); n > longest {
+		if n := ansi.StringWidth(command.Name); n > longest {
 			longest = n
 		}
 	}
@@ -508,15 +508,15 @@ func (s *listScreen) columns(m *Model, results []library.Entry, width int) rowLa
 // list the first and last rows are given over to the counts still hidden —
 // reserved at both ends whether or not both ends have anything to report, so
 // the rows between them hold still as the selection moves.
-func (s *listScreen) listRows(m *Model, results []library.Entry, sel, rows, width int, query string) []string {
+func (s *listScreen) listRows(m *Model, results []library.Command, sel, rows, width int, query string) []string {
 	if rows <= 0 {
 		return nil
 	}
 	l := s.columns(m, results, width)
 	if len(results) <= rows {
 		out := make([]string, 0, len(results))
-		for i, entry := range results {
-			out = append(out, s.rowFor(m, entry, i == sel, l, query))
+		for i, command := range results {
+			out = append(out, s.rowFor(m, command, i == sel, l, query))
 		}
 		return out
 	}
@@ -558,13 +558,13 @@ func overflowRow(arrow string, n int) string {
 // that Command is the one awaiting an answer. The confirm takes over the row
 // rather than the screen, so the detail strip below it goes on showing the
 // command you are about to lose — and now has the width to name it.
-func (s *listScreen) rowFor(m *Model, entry library.Entry, selected bool, l rowLayout, query string) string {
+func (s *listScreen) rowFor(m *Model, command library.Command, selected bool, l rowLayout, query string) string {
 	width := 2 + l.name + l.meta + l.gap
 	if l.preview > 0 {
 		width += l.preview + 2
 	}
-	if entry.ID == s.confirming {
-		label := fmt.Sprintf("⚠ Delete '%s'? y/n", entry.Name)
+	if command.ID == s.confirming {
+		label := fmt.Sprintf("⚠ Delete '%s'? y/n", command.Name)
 		label = ansi.Truncate(label, width, "…")
 		fill := dangerStyle.Bold(true).Background(lipgloss.Color(surfaceColor))
 		return fill.Render(label + strings.Repeat(" ", max(0, width-ansi.StringWidth(label))))
@@ -575,13 +575,13 @@ func (s *listScreen) rowFor(m *Model, entry library.Entry, selected bool, l rowL
 		pointer = "❯ "
 	}
 	fill := onSelected(lipglossPlain, selected)
-	out := onSelected(accentStyle, selected).Render(pointer) + column(highlightName(query, entry.Name, l.name, selected), l.name, selected)
+	out := onSelected(accentStyle, selected).Render(pointer) + column(highlightName(query, command.Name, l.name, selected), l.name, selected)
 
 	if l.preview > 0 {
-		out += fill.Render("  ") + column(onSelected(dimStyle, selected).Render(oneLine(entry.Command, l.preview)), l.preview, selected)
+		out += fill.Render("  ") + column(onSelected(dimStyle, selected).Render(oneLine(command.Template, l.preview)), l.preview, selected)
 	}
 	if l.meta > 0 {
-		rendered, w := rowMeta(m, entry, selected)
+		rendered, w := rowMeta(m, command, selected)
 		out += fill.Render(strings.Repeat(" ", l.gap+max(0, l.meta-w))) + rendered
 	}
 	return out
@@ -605,12 +605,12 @@ func oneLine(command string, width int) string {
 // rowMeta is the right-hand end of a row: how many arguments the Command asks
 // for, and when it was last used. Returns the rendered string and its width,
 // which the layout needs before it can right-align the column.
-func rowMeta(m *Model, entry library.Entry, selected bool) (string, int) {
+func rowMeta(m *Model, command library.Command, selected bool) (string, int) {
 	var parts []run
-	if n := len(placeholders.Parse(entry.Command)); n > 0 {
+	if n := len(placeholders.Parse(command.Template)); n > 0 {
 		parts = append(parts, run{text: fmt.Sprintf("⌁%d", n), style: onSelected(accentStyle, selected)})
 	}
-	if used := m.st[entry.ID].LastUsedAt; used != "" {
+	if used := m.st[command.ID].LastUsedAt; used != "" {
 		if ago := timeAgo(used, m.deps.Now()); ago != "" {
 			if len(parts) > 0 {
 				parts = append(parts, run{text: " · ", style: onSelected(dimStyle, selected)})
