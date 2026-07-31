@@ -49,7 +49,7 @@ type listScreen struct {
 }
 
 func newListScreen(m *Model) *listScreen {
-	s := &listScreen{query: newField(fieldLine)}
+	s := &listScreen{query: newField(lineMode)}
 	// An empty Library has nothing to search and one thing to do, and `a` has
 	// to work on the first key a new user presses.
 	if len(m.lib.Commands) == 0 {
@@ -678,8 +678,7 @@ func dimLines(text string, inner int) []string {
 // commandBlock renders a Command with its `$ ` gutter, its Placeholders picked
 // out, wrapped to width.
 func commandBlock(command string, inner int) []string {
-	runs := append([]run{{text: "$ ", style: dimStyle}}, templateRuns(command)...)
-	return wrapStyled(runs, inner)
+	return wrapStyled(withPrompt(templateRuns(command)), inner)
 }
 
 // placeholderRows lists a Command's Placeholders, one row each, flush left —
