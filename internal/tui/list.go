@@ -316,6 +316,19 @@ const (
 	searchGlyphWidth = 2
 )
 
+// searchColumns is the search row's shape: the glyph, the query, and the count
+// in whatever the query leaves behind it.
+//
+// The count trails rather than holding a column of its own, so the field is
+// given the row less its glyph. A query longer than that slides under its own
+// caret rather than being windowed into a narrower column — or running off the
+// end of the frame to be cut by the clamp in View, which took the caret with it.
+var searchColumns = arrangement{
+	{spend: spendFixed, n: searchGlyphWidth},
+	{spend: spendFlex, needs: 1},
+	{spend: spendWidest, align: alignTrailing, needs: 1},
+}
+
 // searchRow is the prompt and the result count on one row — where the search
 // field used to cost three, two of them border. The count yields to the query
 // as the row narrows: what you are typing outranks how much it found, and the
@@ -329,23 +342,30 @@ func (s *listScreen) searchRow(m *Model, results []library.Command, width int) s
 	if s.focus != focusSearch {
 		glyph = sectionStyle()
 	}
-	// The field is given the row less its glyph, so a query longer than the row
-	// slides under its caret rather than running off the end of the frame to be
-	// cut by the clamp in View — which took the caret with it.
-	rows, _ := s.query.Rows(width-searchGlyphWidth, m.caretOn())
-	left := glyph.Render(searchGlyph) + rows[0]
 	counts := fmt.Sprintf("%d/%d", len(results), len(m.lib.Commands))
-	for _, right := range []string{counts + " · Recently used", counts, ""} {
-		if s.query.Value() != "" && strings.HasSuffix(right, "Recently used") {
-			continue
-		}
-		gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
-		if gap < 1 && right != "" {
-			continue
-		}
-		return left + strings.Repeat(" ", max(0, gap)) + dimStyle.Render(right)
+	// The count's forms, longest first. A query has no sort order to report, so
+	// that form is not offered rather than being offered and rejected.
+	forms := []string{counts + " · Recently used", counts, ""}
+	if s.query.Value() != "" {
+		forms = forms[1:]
 	}
-	return left
+
+	on := m.caretOn()
+	candidates := make([]candidate, 0, len(forms))
+	for _, form := range forms {
+		candidates = append(candidates, candidate{
+			columns: searchColumns,
+			rows: []blockRow{{cells: []cell{
+				textCell(searchGlyph, glyph),
+				fieldCell(func(w int) string {
+					rendered, _ := s.query.Rows(w, on)
+					return rendered[0]
+				}),
+				textCell(form, dimStyle),
+			}}},
+		})
+	}
+	return layout(width, candidates...)[0]
 }
 
 // ---------- the detail strip ----------
@@ -431,18 +451,76 @@ func (s *listScreen) detailContent(command library.Command, inner int) []string 
 
 // ---------- the list ----------
 
-// rowLayout is the column geometry every row of one frame shares, measured once
-// across the results so names and badges line up down the list.
-type rowLayout struct {
-	name    int
-	preview int // 0 when the terminal is too narrow to carry one
-	meta    int
-	gap     int // the columns between the preview and the meta
-}
-
 // previewFloor is the width below which a row shows its name alone. A command
 // preview narrower than this is more ellipsis than command.
 const previewFloor = 24
+
+// The list row's four columns, in the order they are drawn.
+const (
+	colPointer = iota
+	colName
+	colPreview
+	colMeta
+)
+
+// listColumns is one of the list row's four arrangements.
+//
+// The preview yields first: it is the one column whose absence costs nothing
+// you cannot get by moving the selection onto the row. When it goes, the name
+// stops being held inside its band and takes the whole remainder — which is the
+// reason these are arrangements rather than one arrangement with columns
+// dropped out of it. Losing the preview does not just free the name's
+// neighbour, it changes how the name spends its width.
+//
+// The meta goes next, and whole rather than truncated: a name cut to `depl…`
+// costs more than not knowing how long ago it was used, and half a badge says
+// nothing at all. The name is never the column that gives.
+func listColumns(preview, meta bool) arrangement {
+	a := arrangement{
+		colPointer: {spend: spendFixed, n: 2},
+		// Sized to the longest name the column would swing with every keystroke
+		// of the query; the band keeps it wide enough to read and narrow enough
+		// to leave the preview something. With no preview beside it there is
+		// nothing to leave, and eight columns is the least a name is worth.
+		colName:    {spend: spendWidest, clampMin: 12, clampMax: 40},
+		colPreview: {spend: spendFlex, lead: 2, needs: previewFloor},
+		colMeta:    {spend: spendWidest, lead: 2, align: alignRight},
+	}
+	if !preview {
+		a[colName] = column{spend: spendFlex, needs: 8}
+		a[colPreview] = column{spend: spendNone}
+	}
+	if !meta {
+		a[colMeta] = column{spend: spendNone}
+	}
+	return a
+}
+
+// listCandidates is the order the list row gives its columns up in — the four
+// combinations of the two it can do without, widest first.
+//
+// The third is reachable only behind a meta wider than a name and a preview
+// together, which no badge potato writes comes close to. It is here because the
+// two columns are decided independently: nothing about dropping the preview
+// says the meta has to go with it, and enumerating the pair is cheaper than a
+// rule explaining why one of them cannot happen.
+func listCandidates(rows, sized []blockRow) []candidate {
+	shapes := [...]struct{ preview, meta bool }{
+		{preview: true, meta: true},
+		{preview: false, meta: true},
+		{preview: true, meta: false},
+		{preview: false, meta: false},
+	}
+	out := make([]candidate, 0, len(shapes))
+	for _, shape := range shapes {
+		out = append(out, candidate{
+			columns: listColumns(shape.preview, shape.meta),
+			rows:    rows,
+			sizedBy: sized,
+		})
+	}
+	return out
+}
 
 // listRegionRows is the fixed height of the list region: seven rows of
 // commands — or five with the overflow counters around them — padded out
@@ -454,38 +532,6 @@ const listRegionRows = 7
 // three rows, and five Placeholders.
 const detailMaxRows = 10
 
-func (s *listScreen) columns(m *Model, results []library.Command, width int) rowLayout {
-	meta, longest := 0, 0
-	for _, command := range results {
-		if _, n := rowMeta(m, command, false); n > meta {
-			meta = n
-		}
-		if n := ansi.StringWidth(command.Name); n > longest {
-			longest = n
-		}
-	}
-	// The meta column yields first, and whole rather than truncated: a name cut
-	// to `depl…` costs more than not knowing how long ago it was used, and half
-	// a badge says nothing at all.
-	l := rowLayout{}
-	if meta > 0 && width-2-meta-2 >= 8 {
-		l.meta, l.gap = meta, 2
-	}
-
-	// what the pointer and the meta column leave for the name and the preview
-	free := max(1, width-2-l.meta-l.gap)
-	// A name column sized to the longest name would swing with the query; the
-	// clamp keeps it inside a band wide enough to read and narrow enough to
-	// leave the preview something.
-	l.name = min(min(max(longest, 12), 40), free)
-	if rest := free - l.name - 2; rest >= previewFloor {
-		l.preview = rest
-	} else {
-		l.name = free
-	}
-	return l
-}
-
 // listRows renders the visible slice of the results. When they overflow the
 // list the first and last rows are given over to the counts still hidden —
 // reserved at both ends whether or not both ends have anything to report, so
@@ -494,39 +540,84 @@ func (s *listScreen) listRows(m *Model, results []library.Command, sel, rows, wi
 	if rows <= 0 {
 		return nil
 	}
-	l := s.columns(m, results, width)
-	if len(results) <= rows {
-		out := make([]string, 0, len(results))
-		for i, command := range results {
-			out = append(out, s.rowFor(m, command, i == sel, l, query))
+	start, end, counters := 0, len(results), false
+	if len(results) > rows {
+		// Reserving both counters costs two of the rows there are to give.
+		// Below three, that is all of them but one, and the counters would be
+		// spending the budget the list rows and the detail strip under them
+		// were counted into — the strip would lose its last line to a row
+		// saying how many lines were not shown.
+		visible := rows
+		if rows >= 3 {
+			visible, counters = rows-2, true
 		}
-		return out
+		start = max(0, min(sel-visible+1, len(results)-visible))
+		end = min(len(results), start+visible)
 	}
 
-	// Reserving both counters costs two of the rows there are to give. Below
-	// three, that is all of them but one, and the counters would be spending
-	// the budget the list rows and the detail strip under them were counted
-	// into — the strip would lose its last line to a row saying how many lines
-	// were not shown.
-	visible := rows
-	if rows >= 3 {
-		visible = rows - 2
-	}
-	start := max(0, min(sel-visible+1, len(results)-visible))
-	end := min(len(results), start+visible)
-
-	out := make([]string, 0, rows)
-	if rows < 3 {
-		for i := start; i < end; i++ {
-			out = append(out, s.rowFor(m, results[i], i == sel, l, query))
-		}
+	out := s.block(m, results, results[start:end], sel-start, width, query)
+	if !counters {
 		return out
 	}
-	out = append(out, overflowRow("↑", start))
-	for i := start; i < end; i++ {
-		out = append(out, s.rowFor(m, results[i], i == sel, l, query))
+	return append(append([]string{overflowRow("↑", start)}, out...),
+		overflowRow("↓", len(results)-end))
+}
+
+// block lays the visible rows out, sized against every result rather than the
+// seven on screen — so the name and meta columns do not resize under the
+// selection as it moves down a long list.
+func (s *listScreen) block(m *Model, all, visible []library.Command, sel, width int, query string) []string {
+	sized := make([]blockRow, 0, len(all))
+	for _, command := range all {
+		sized = append(sized, blockRow{cells: s.rowCells(m, command, query, false)})
 	}
-	return append(out, overflowRow("↓", len(results)-end))
+	rows := make([]blockRow, 0, len(visible))
+	for i, command := range visible {
+		rows = append(rows, blockRow{cells: s.rowCells(m, command, query, i == sel), selected: i == sel})
+	}
+
+	out := layout(width, listCandidates(rows, sized)...)
+
+	// The confirm takes over the row rather than the screen, so the detail
+	// strip below it goes on showing the command you are about to lose — and
+	// now has the width to name it.
+	for i, command := range visible {
+		if command.ID == s.confirming {
+			out[i] = confirmRow(width, command.Name)
+		}
+	}
+	return out
+}
+
+// rowCells is one Command's row: the selection pointer, its name with the
+// query's hits picked out, a flattened preview of the command itself, and what
+// it asks for and when it was last used.
+func (s *listScreen) rowCells(m *Model, command library.Command, query string, selected bool) []cell {
+	pointer := "  "
+	if selected {
+		pointer = "❯ "
+	}
+	cells := make([]cell, 4)
+	cells[colPointer] = textCell(pointer, accentStyle)
+	cells[colName] = runsCell(nameRuns(query, command.Name))
+	cells[colPreview] = textCell(oneLine(command.Template), dimStyle)
+	cells[colMeta] = runsCell(metaRuns(m, command))
+	return cells
+}
+
+// confirmRow is the delete confirm in a Command's place: one run across the
+// whole row, on the same bar every selected row wears.
+func confirmRow(width int, name string) string {
+	return layout(width, candidate{
+		columns: arrangement{{spend: spendFlex}},
+		rows: []blockRow{{
+			selected: true,
+			cells: []cell{textCell(
+				fmt.Sprintf("⚠ Delete '%s'? y/n", name),
+				dangerStyle.Bold(true),
+			)},
+		}},
+	})[0]
 }
 
 func overflowRow(arrow string, n int) string {
@@ -536,77 +627,31 @@ func overflowRow(arrow string, n int) string {
 	return dimStyle.Render(fmt.Sprintf("  %s %d more", arrow, n))
 }
 
-// rowFor renders a Command's row, or the delete confirm in its place when
-// that Command is the one awaiting an answer. The confirm takes over the row
-// rather than the screen, so the detail strip below it goes on showing the
-// command you are about to lose — and now has the width to name it.
-func (s *listScreen) rowFor(m *Model, command library.Command, selected bool, l rowLayout, query string) string {
-	width := 2 + l.name + l.meta + l.gap
-	if l.preview > 0 {
-		width += l.preview + 2
-	}
-	if command.ID == s.confirming {
-		label := fmt.Sprintf("⚠ Delete '%s'? y/n", command.Name)
-		label = ansi.Truncate(label, width, "…")
-		fill := dangerStyle.Bold(true).Background(lipgloss.Color(surfaceColor))
-		return fill.Render(label + strings.Repeat(" ", max(0, width-ansi.StringWidth(label))))
-	}
-
-	pointer := "  "
-	if selected {
-		pointer = "❯ "
-	}
-	fill := onSelected(lipglossPlain, selected)
-	out := onSelected(accentStyle, selected).Render(pointer) + column(highlightName(query, command.Name, l.name, selected), l.name, selected)
-
-	if l.preview > 0 {
-		out += fill.Render("  ") + column(onSelected(dimStyle, selected).Render(oneLine(command.Template, l.preview)), l.preview, selected)
-	}
-	if l.meta > 0 {
-		rendered, w := rowMeta(m, command, selected)
-		out += fill.Render(strings.Repeat(" ", l.gap+max(0, l.meta-w))) + rendered
-	}
-	return out
-}
-
-// column pads a rendered cell out to its column width, carrying the selection
-// fill through the padding so the bar has no holes in it.
-func column(rendered string, width int, selected bool) string {
-	pad := max(0, width-ansi.StringWidth(rendered))
-	return rendered + onSelected(lipglossPlain, selected).Render(strings.Repeat(" ", pad))
-}
-
 // oneLine flattens a Command to a single row of preview text. A Command may
 // hold newlines, since a hand-edited library file or an import can carry them
-// where the single-line edit fields cannot, and a row is one row.
-func oneLine(command string, width int) string {
-	flat := strings.Join(strings.Fields(strings.ReplaceAll(command, "\n", " ")), " ")
-	return ansi.Truncate(flat, width, "…")
+// where the single-line edit fields cannot, and a row is one row. Cutting it to
+// the column is the Layout's — this only has to make it one line long.
+func oneLine(command string) string {
+	return strings.Join(strings.Fields(strings.ReplaceAll(command, "\n", " ")), " ")
 }
 
-// rowMeta is the right-hand end of a row: how many arguments the Command asks
-// for, and when it was last used. Returns the rendered string and its width,
-// which the layout needs before it can right-align the column.
-func rowMeta(m *Model, command library.Command, selected bool) (string, int) {
+// metaRuns is the right-hand end of a row: how many arguments the Command asks
+// for, and when it was last used. The selection fill is the Layout's to carry,
+// so these are the runs underneath it.
+func metaRuns(m *Model, command library.Command) []run {
 	var parts []run
 	if n := len(placeholders.Parse(command.Template)); n > 0 {
-		parts = append(parts, run{text: fmt.Sprintf("⌁%d", n), style: onSelected(accentStyle, selected)})
+		parts = append(parts, run{text: fmt.Sprintf("⌁%d", n), style: accentStyle})
 	}
 	if used := m.st[command.ID].LastUsedAt; used != "" {
 		if ago := timeAgo(used, m.deps.Now()); ago != "" {
 			if len(parts) > 0 {
-				parts = append(parts, run{text: " · ", style: onSelected(dimStyle, selected)})
+				parts = append(parts, run{text: " · ", style: dimStyle})
 			}
-			parts = append(parts, run{text: ago, style: onSelected(dimStyle, selected)})
+			parts = append(parts, run{text: ago, style: dimStyle})
 		}
 	}
-	var b strings.Builder
-	width := 0
-	for _, p := range parts {
-		b.WriteString(p.style.Render(p.text))
-		width += ansi.StringWidth(p.text)
-	}
-	return b.String(), width
+	return parts
 }
 
 // ---------- empty states ----------
@@ -698,25 +743,23 @@ func placeholderRows(ps []placeholders.Placeholder, width int) []string {
 	return out
 }
 
-// highlightName paints the subsequence match positions in the brand's
-// brightest gold, carrying the selection fill through both runs.
-func highlightName(query, name string, width int, selected bool) string {
-	name = ansi.Truncate(name, width, "…")
-	plain := onSelected(boldStyle.Foreground(lipgloss.Color(textColor)), selected)
-	hit := onSelected(boldStyle.Foreground(lipgloss.Color(highlightColor)), selected)
+// nameRuns paints the subsequence match positions in the brand's brightest
+// gold. The name is matched whole and cut by the Layout, which cuts from the
+// right — so a hit that falls off the end simply has nothing left to paint.
+func nameRuns(query, name string) []run {
+	plain := boldStyle.Foreground(lipgloss.Color(textColor))
+	hit := boldStyle.Foreground(lipgloss.Color(highlightColor))
 	matches, ok := search.NameMatchIndices(query, name)
 	if !ok {
-		return plain.Render(name)
+		return []run{{text: name, style: plain}}
 	}
-	var b strings.Builder
+	out := make([]run, 0, len(name))
 	for i, r := range []rune(name) {
-		// the name may have been truncated to fit the column, so a match index
-		// past its end simply has nothing left to paint
+		style := plain
 		if i < len(matches) && matches[i] {
-			b.WriteString(hit.Render(string(r)))
-			continue
+			style = hit
 		}
-		b.WriteString(plain.Render(string(r)))
+		out = append(out, run{text: string(r), style: style})
 	}
-	return b.String()
+	return out
 }

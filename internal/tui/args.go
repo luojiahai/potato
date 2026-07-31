@@ -5,11 +5,9 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/luojiahai/potato/internal/library"
 	"github.com/luojiahai/potato/internal/placeholders"
 )
@@ -84,75 +82,84 @@ func (s *argsScreen) keys(*Model) []footerKey {
 	return footerKeys(keymap.args.Run, keymap.args.Copy, keymap.form.Next, keymap.args.Back)
 }
 
-// labelWidth is the gutter every arg row shares, so the values line up down
-// the panel however long the individual Placeholder names are.
-func (s *argsScreen) labelWidth() int {
-	w := 0
-	for _, p := range s.ps {
-		if n := ansi.StringWidth(p.Name); n > w {
-			w = n
-		}
+// note is where an arg's pre-filled value came from — a different thing from a
+// Field's hint, and named apart from it.
+func (s *argsScreen) note(p placeholders.Placeholder) string {
+	if _, ok := s.lastArgs[p.Name]; ok {
+		return "(Last used)"
 	}
-	return w + 2
+	if p.HasDefault {
+		return fmt.Sprintf("(Default: %s)", p.Default)
+	}
+	return ""
 }
 
-// row renders one arg: its name in the shared gutter, the value with the caret
-// when focused, and its note right-aligned — where the value came from, which
-// is a different thing from a Field's hint and named apart from it. The focused
-// row is filled across
-// the full width — the same bar the list screen marks its selection with,
-// rather than a second focus language for the same idea — so the row carries
-// its own content indent instead of being indented from outside, where the
-// leading spaces would fall outside the fill and break the bar.
-func (s *argsScreen) row(i, width int, on bool) string {
-	p := s.ps[i]
-	focused := i == s.form.Focused()
-	inner := max(1, width-2)
+// The arg row's four columns, in the order they are drawn.
+const (
+	argIndent = iota
+	argLabel
+	argValue
+	argNote
+)
 
-	note := ""
-	if _, ok := s.lastArgs[p.Name]; ok {
-		note = "(Last used)"
-	} else if p.HasDefault {
-		note = fmt.Sprintf("(Default: %s)", p.Default)
+// argColumns is the arg row's two arrangements. The note yields to the value:
+// it is the first thing given up when the panel is too narrow to carry both,
+// and eight columns is the least a value is worth showing in.
+func argColumns(withNote bool) arrangement {
+	a := arrangement{
+		argIndent: {spend: spendFixed, n: 2},    // inside the fill, not outside it
+		argLabel:  {spend: spendWidest, pad: 2}, // the gutter the values hang from
+		argValue:  {spend: spendFlex, needs: 8},
+		argNote:   {spend: spendWidest, lead: 2, align: alignRight},
 	}
-
-	gutter := s.labelWidth()
-	label := ansi.Truncate(p.Name, gutter-1, "…")
-	labelPad := max(0, gutter-ansi.StringWidth(label))
-
-	// The note yields to the value: it is the first thing dropped when the
-	// panel is too narrow to carry both.
-	valueWidth := max(1, inner-gutter)
-	noteWidth := ansi.StringWidth(note) + 2
-	if note != "" && valueWidth-noteWidth < 8 {
-		note, noteWidth = "", 0
+	if !withNote {
+		a[argValue].needs = 1
+		a[argNote] = column{spend: spendNone}
 	}
-	valueWidth = max(1, valueWidth-noteWidth)
+	return a
+}
 
-	rows, _ := s.form.Field(i).Rows(valueWidth, on)
-	rendered := rows[0]
-	// Measured on the rendered run, not the value: a caret parked past the
-	// last character occupies a cell of its own, and charging the gap for the
-	// value alone would push the row one column past the edge.
-	gap := max(0, valueWidth-ansi.StringWidth(rendered))
-
-	fill := onSelected(lipglossPlain, focused)
-	out := fill.Render(contentIndent) + onSelected(dimStyle, focused).Render(label) +
-		fill.Render(strings.Repeat(" ", labelPad)) + rendered + fill.Render(strings.Repeat(" ", gap))
-	if note != "" {
-		out += onSelected(dimStyle, focused).Render("  " + note)
+// rows lays the args out as one block: the label gutter is measured once across
+// every Placeholder, and the notes take one column between them so they line up
+// down the panel however long any one of them is.
+//
+// The focused row is filled across the full width — the same bar the list
+// screen marks its selection with, rather than a second focus language for the
+// same idea — so the row carries its own content indent instead of being
+// indented from outside, where the leading spaces would fall outside the fill
+// and break the bar.
+func (s *argsScreen) rows(width int, on bool) []string {
+	block := make([]blockRow, 0, len(s.ps))
+	withNote := false
+	for i, p := range s.ps {
+		note := s.note(p)
+		if note != "" {
+			withNote = true
+		}
+		cells := make([]cell, 4)
+		cells[argIndent] = cell{} // nothing to draw; the fill runs through it
+		cells[argLabel] = textCell(p.Name, dimStyle)
+		// The Field is drawn once the arrangement has sized its column: it
+		// windows its value around the caret, so it cannot know what it looks
+		// like until it knows how much room it got.
+		cells[argValue] = fieldCell(func(w int) string {
+			rendered, _ := s.form.Field(i).Rows(w, on)
+			return rendered[0]
+		})
+		cells[argNote] = textCell(note, dimStyle)
+		block = append(block, blockRow{cells: cells, selected: i == s.form.Focused()})
 	}
-	return out
+	return layout(width,
+		candidate{columns: argColumns(withNote), rows: block},
+		candidate{columns: argColumns(false), rows: block},
+	)
 }
 
 func (s *argsScreen) view(m *Model) []string {
 	width := m.innerWidth()
 
 	top := []string{rule(width, "Arguments · "+s.name, sectionStyle(), "")}
-	on := m.caretOn()
-	for i := range s.ps {
-		top = append(top, s.row(i, width, on))
-	}
+	top = append(top, s.rows(width, m.caretOn())...)
 
 	// The filled-in values are the only part of the preview the user just
 	// decided, so they carry the highlight and the rest reads as plain text.
