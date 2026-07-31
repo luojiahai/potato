@@ -11,7 +11,7 @@ import (
 // neither. Tab belongs to the Form; this is where it is tested.
 
 func threeFields() form {
-	return newForm(newField(fieldWrap), newField(fieldWrap), newField(fieldWrap))
+	return newForm(newField(wrapMode), newField(wrapMode), newField(wrapMode))
 }
 
 func TestTabWalksTheRingAndWrapsAround(t *testing.T) {

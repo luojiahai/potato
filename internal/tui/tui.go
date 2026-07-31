@@ -61,12 +61,12 @@ type Model struct {
 	// quitting makes the next frame an empty one, erasing the inline block.
 	quitting bool
 	screen   screen
-	// caret is the blink clock for every field that draws its own caret — the
-	// edit fields and the arg rows. The search field blinks on the one inside
-	// its textinput, which bubbles keeps unexported and unreadable, so the
-	// fields cannot borrow it. They run the same implementation instead, which
-	// is what makes the two carets keep the same time rather than the same
-	// hand-copied constant. Only one field has the keyboard at a time, so one
+	// caret is the blink clock for every Field in the frame. It used to be the
+	// clock for all but one: the search field blinked on the one inside its
+	// textinput, which bubbles keeps unexported and unreadable, so the rest ran
+	// a copy of it and a test stood over the two to prove they had not drifted.
+	// Now potato paints every caret and nothing reads the one inside — there is
+	// this clock and no other. Only one Field has the keyboard at a time, so one
 	// clock is all there is to keep.
 	caret cursor.Model
 }
@@ -81,10 +81,10 @@ func New(deps Deps) *Model {
 		caret:  cursor.New(),
 	}
 	// A new cursor starts hidden, so without this the first frame would have no
-	// caret in it at all. The command it returns is dropped, the way every
-	// field drops the one Focus hands back (see newField): the caret is solid
-	// until the first keystroke re-arms it, which is what the search field does
-	// and so is what the fields beside it should do.
+	// caret in it at all. The command it returns is dropped, the way every Field
+	// drops the one Focus hands back (see field.Focus): the caret is solid until
+	// the first keystroke re-arms it, so a Field that has just been handed the
+	// keyboard looks the same on launch as on a tab round-trip.
 	m.caret.Focus()
 	m.screen = newListScreen(m)
 	return m

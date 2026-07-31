@@ -41,7 +41,7 @@ func newArgsScreen(m *Model, command *library.Command) *argsScreen {
 	}
 	fields := make([]field, 0, len(ps))
 	for _, p := range ps {
-		f := newField(fieldLine)
+		f := newField(lineMode)
 		f.paint = argPaint
 		// pre-fill precedence: last value > default > empty (spec §2)
 		if value, ok := s.lastArgs[p.Name]; ok {
@@ -97,7 +97,9 @@ func (s *argsScreen) labelWidth() int {
 }
 
 // row renders one arg: its name in the shared gutter, the value with the caret
-// when focused, and the hint right-aligned. The focused row is filled across
+// when focused, and its note right-aligned — where the value came from, which
+// is a different thing from a Field's hint and named apart from it. The focused
+// row is filled across
 // the full width — the same bar the list screen marks its selection with,
 // rather than a second focus language for the same idea — so the row carries
 // its own content indent instead of being indented from outside, where the
@@ -107,25 +109,25 @@ func (s *argsScreen) row(i, width int, on bool) string {
 	focused := i == s.form.Focused()
 	inner := max(1, width-2)
 
-	hint := ""
+	note := ""
 	if _, ok := s.lastArgs[p.Name]; ok {
-		hint = "(Last used)"
+		note = "(Last used)"
 	} else if p.HasDefault {
-		hint = fmt.Sprintf("(Default: %s)", p.Default)
+		note = fmt.Sprintf("(Default: %s)", p.Default)
 	}
 
 	gutter := s.labelWidth()
 	label := ansi.Truncate(p.Name, gutter-1, "…")
 	labelPad := max(0, gutter-ansi.StringWidth(label))
 
-	// The hint yields to the value: it is the first thing dropped when the
+	// The note yields to the value: it is the first thing dropped when the
 	// panel is too narrow to carry both.
 	valueWidth := max(1, inner-gutter)
-	hintWidth := ansi.StringWidth(hint) + 2
-	if hint != "" && valueWidth-hintWidth < 8 {
-		hint, hintWidth = "", 0
+	noteWidth := ansi.StringWidth(note) + 2
+	if note != "" && valueWidth-noteWidth < 8 {
+		note, noteWidth = "", 0
 	}
-	valueWidth = max(1, valueWidth-hintWidth)
+	valueWidth = max(1, valueWidth-noteWidth)
 
 	rows, _ := s.form.Field(i).Rows(valueWidth, on)
 	rendered := rows[0]
@@ -137,8 +139,8 @@ func (s *argsScreen) row(i, width int, on bool) string {
 	fill := onSelected(lipglossPlain, focused)
 	out := fill.Render(contentIndent) + onSelected(dimStyle, focused).Render(label) +
 		fill.Render(strings.Repeat(" ", labelPad)) + rendered + fill.Render(strings.Repeat(" ", gap))
-	if hint != "" {
-		out += onSelected(dimStyle, focused).Render("  " + hint)
+	if note != "" {
+		out += onSelected(dimStyle, focused).Render("  " + note)
 	}
 	return out
 }
@@ -154,7 +156,7 @@ func (s *argsScreen) view(m *Model) []string {
 
 	// The filled-in values are the only part of the preview the user just
 	// decided, so they carry the highlight and the rest reads as plain text.
-	preview := append([]run{{text: "$ ", style: dimStyle}}, renderRuns(s.command, s.values())...)
+	preview := withPrompt(renderRuns(s.command, s.values()))
 
 	// `will run` sits directly under the arg rows it is the result of, rather
 	// than absorbing the free height the way the old panel did — a sixteen-row

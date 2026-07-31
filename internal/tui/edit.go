@@ -62,7 +62,7 @@ func newEditScreen(m *Model, command *library.Command) *editScreen {
 	}
 	fields := make([]field, 0, fieldCount)
 	for i, value := range values {
-		f := newField(fieldWrap)
+		f := newField(wrapMode)
 		// Only the command field highlights Placeholders — it is the only one
 		// where `{{name}}` means anything — and only it has a hint to offer.
 		if i == fieldCommand {

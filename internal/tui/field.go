@@ -28,22 +28,29 @@ import (
 type fieldMode int
 
 const (
-	// fieldWrap folds the value at the width and grows downward — the add/edit
+	// wrapMode folds the value at the width and grows downward — the add/edit
 	// fields, where the command being typed is the tallest thing on screen.
-	fieldWrap fieldMode = iota
-	// fieldLine keeps the value on one row and slides it under the caret — the
+	wrapMode fieldMode = iota
+	// lineMode keeps the value on one row and slides it under the caret — the
 	// search field and the arg rows, which sit in rows they cannot grow out of.
-	fieldLine
+	lineMode
 )
 
-// paint maps a value to the runs it renders as, given whether the Field has the
-// keyboard. It is the one hook for what a Field looks like: the command field
-// picks its Placeholders out in gold, an arg row carries the selection fill
-// across its value, and everything else is plain command text.
-type paint func(value string, focused bool) []run
+// painter maps a value to the runs it renders as, given whether the Field has
+// the keyboard. It is the one hook for what a Field looks like: the command
+// field picks its Placeholders out in gold, an arg row carries the selection
+// fill across its value, and everything else is plain command text.
+type painter func(value string, focused bool) []run
 
 func plainPaint(value string, _ bool) []run {
 	return []run{{text: value, style: textStyle}}
+}
+
+// withPrompt puts the `$ ` gutter in front of a command's runs — the detail
+// strip's block and the arg screen's preview are the same thing rendered in two
+// places, and the gutter is part of what makes them read that way.
+func withPrompt(runs []run) []run {
+	return append([]run{{text: "$ ", style: dimStyle}}, runs...)
 }
 
 // segmentRuns picks a template's Placeholders out in gold. Three renderers want
@@ -75,80 +82,89 @@ func renderRuns(template string, values map[string]string) []run {
 }
 
 type field struct {
-	input textinput.Model
+	model textinput.Model
 	mode  fieldMode
 	// paint is how the value looks; nil is plain command text.
-	paint paint
+	paint painter
 	// hint is what an empty Field shows in its place, and "" is nothing. It is
 	// text the caret sits on rather than a row of its own — see hintRows.
 	hint string
 }
 
 // newField builds a Field. The bubbles model inside it is stripped to the parts
-// potato reads: no prompt, and none of the styling it would need to draw
-// itself, because it never does.
+// potato reads: no prompt, and none of the styling it would need to draw itself.
+// It is never asked to — Rows is the only thing that renders a Field, and it
+// reads the value and the cursor and paints them itself. Configuring styles the
+// model would only use from View would be describing a frame nothing draws, and
+// the second description of potato's palette that this file exists to remove.
+//
+// field and form capitalise their methods where the screens beside them do not.
+// They are the two types here with an interface a caller has to learn rather
+// than a body a screen reads top to bottom, and the capital marks that surface.
+// The lowercase alternative also collides: `focus` is already a type in list.go
+// and `field` is this one.
 func newField(mode fieldMode) field {
-	input := textinput.New()
-	input.Prompt = ""
-	return field{input: input, mode: mode}
+	model := textinput.New()
+	model.Prompt = ""
+	return field{model: model, mode: mode}
 }
 
-func (f *field) Value() string     { return f.input.Value() }
-func (f *field) SetValue(s string) { f.input.SetValue(s) }
-func (f *field) Position() int     { return f.input.Position() }
-func (f *field) Focused() bool     { return f.input.Focused() }
-func (f *field) Blur()             { f.input.Blur() }
+func (f *field) Value() string     { return f.model.Value() }
+func (f *field) SetValue(s string) { f.model.SetValue(s) }
+func (f *field) Position() int     { return f.model.Position() }
+func (f *field) Focused() bool     { return f.model.Focused() }
+func (f *field) Blur()             { f.model.Blur() }
 
 // Focus hands the Field the keyboard. The blink command bubbles returns is
 // dropped: focus alone leaves the caret solid and the next keystroke re-arms
 // the blink, which is what makes a Field taking the keyboard look the same
 // whether it happened on launch or on a tab round-trip.
-func (f *field) Focus() { f.input.Focus() }
+func (f *field) Focus() { f.model.Focus() }
 
 // Update feeds the Field a message and reports whether the value changed —
 // which is not the same as having been sent a key. Cursor motion, a chord the
 // field does not claim, and the blink's own message all leave the value alone,
 // and a caller that resets something on an edit needs to tell those apart.
 func (f *field) Update(msg tea.Msg) (tea.Cmd, bool) {
-	before := f.input.Value()
+	before := f.model.Value()
 	var cmd tea.Cmd
-	f.input, cmd = f.input.Update(msg)
-	return cmd, f.input.Value() != before
+	f.model, cmd = f.model.Update(msg)
+	return cmd, f.model.Value() != before
 }
 
 // Rows renders the Field into a width, and reports which of them the caret
 // landed on so a caller with less height than the Field has rows can window
-// around it. A fieldLine Field always returns exactly one row.
+// around it. A lineMode Field always returns exactly one row.
 //
 // on is the blink's lit half. It is separate from focus because the two answer
 // different questions: focus says whether this Field has a caret at all, on
 // says whether the caret is showing this frame.
 func (f *field) Rows(width int, on bool) ([]string, int) {
 	width = max(width, 1)
-	value := f.input.Value()
-	focused := f.input.Focused()
+	value := f.model.Value()
+	focused := f.model.Focused()
 
 	if value == "" && f.hint != "" {
 		return f.hintRows(width, focused, on)
 	}
 
-	style := f.paint
-	if style == nil {
-		style = plainPaint
+	paint := f.paint
+	if paint == nil {
+		paint = plainPaint
 	}
 
-	if f.mode == fieldLine {
+	if f.mode == lineMode {
 		// The window is taken before the paint, so the runs describe what is on
 		// screen rather than what would be if the row were long enough.
-		windowed, caret := windowValue(value, f.input.Position(), width, focused)
-		return wrapStyledHard(style(windowed, focused), width, caret, on)
+		windowed, caret := windowValue(value, f.model.Position(), width, focused)
+		return wrapStyledHard(paint(windowed, focused), width, caret, on)
 	}
 
 	caret := -1
 	if focused {
-		caret = min(f.input.Position(), len([]rune(value)))
+		caret = min(f.model.Position(), len([]rune(value)))
 	}
-	return wrapStyledHard(style(value, focused), width, caret, on)
+	return wrapStyledHard(paint(value, focused), width, caret, on)
 }
 
 // hintRows draws the hint an empty Field shows in place of its value.
@@ -172,22 +188,71 @@ func (f *field) hintRows(width int, focused, on bool) ([]string, int) {
 }
 
 // windowValue slides a single-row value so the caret stays on screen, the way a
-// one-line field scrolls rather than wraps.
+// one-line field scrolls rather than wraps. It returns the visible slice and the
+// caret's rune index within it.
+//
+// It counts columns, not runes. Counting runes is the same arithmetic only while
+// every rune is one column wide: a value of CJK or emoji windowed to a rune
+// count is up to twice as many columns as it was given, and the row it is handed
+// to wraps — so a one-line Field returned two rows, the caller took the first,
+// and the caret was in the one it threw away. That is the very thing this
+// windowing exists to prevent.
 func windowValue(value string, pos, width int, focused bool) (string, int) {
 	rs := []rune(value)
+	width = max(1, width)
+
 	if !focused {
-		if len(rs) <= width {
-			return value, -1
+		end, used := 0, 0
+		for end < len(rs) {
+			w := runeWidth(rs[end])
+			if used+w > width {
+				break
+			}
+			used += w
+			end++
 		}
-		return string(rs[:width]), -1
+		return string(rs[:end]), -1
 	}
-	// One column is held back for the caret, which needs a cell of its own
-	// once it is parked past the last character.
-	width = max(1, width-1)
+
+	// bubbles clamps the cursor into the value on every SetValue and SetCursor,
+	// so this cannot bite today. It is the one assumption this file makes about
+	// the model inside it, and a caret index past the end would window around a
+	// rune that is not there.
 	caret := min(pos, len(rs))
-	start := 0
-	if caret >= width {
-		start = caret - width + 1
+
+	// The caret's own cell is reserved before anything else: the rune it sits on,
+	// or one blank column when it is parked past the last one. Without that, a
+	// window filled from the left can end exactly at the caret and leave it
+	// nothing to sit on — the block is drawn past the text instead of over it.
+	cell := 1
+	if caret < len(rs) {
+		cell = runeWidth(rs[caret])
 	}
-	return string(rs[start:min(len(rs), start+width)]), caret - start
+	used := min(cell, width)
+	start, end := caret, caret
+	if caret < len(rs) && used == cell {
+		end = caret + 1
+	}
+
+	// Grow left first, so a caret at the end of a long value shows the columns
+	// behind it, then spend whatever is left going right.
+	for start > 0 {
+		w := runeWidth(rs[start-1])
+		if used+w > width {
+			break
+		}
+		used += w
+		start--
+	}
+	for end < len(rs) {
+		w := runeWidth(rs[end])
+		if used+w > width {
+			break
+		}
+		used += w
+		end++
+	}
+	return string(rs[start:end]), caret - start
 }
+
+func runeWidth(r rune) int { return ansi.StringWidth(string(r)) }
