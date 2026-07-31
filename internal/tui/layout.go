@@ -1,24 +1,26 @@
-// A Layout is the cells one row of the frame is laid out from, and the
+// A Layout is the cells one line of the frame is laid out from, and the
 // candidate arrangements that fit them to a width.
 //
-// Three rows are laid out this way — a list row, an arg row, and the search row
-// — and each used to carry its own copy of the same four decisions: measure the
-// widest cell down the block, decide what to give up when the row will not fit,
-// pad what is left, and carry the selection fill through every run and every
-// pad. The last of those is the one that bites. lipgloss cannot cascade a
-// background over an already-rendered escape sequence, so the fill has to go on
-// each run as it is built; a run that skips it punches a hole in the bar, and
-// nothing short of looking at the screen would tell you. A list row applied it
-// in six places and an arg row in five.
+// Four lines go through a Layout: a list row, an arg row, the search row and
+// the delete confirm. The first three each used to carry their own copy of the
+// same four decisions — measure the widest cell down the block, decide what to
+// give up when the row will not fit, pad what is left, and carry the selection
+// fill through every run and every pad — while the confirm reconstructed the
+// frame's width by summing those columns back up. The fill is the decision that
+// bites. lipgloss cannot cascade a background over an already-rendered escape
+// sequence, so the fill has to go on each run as it is built; a run that skips
+// it punches a hole in the bar, and nothing short of looking at the screen
+// would tell you. A list row applied it in six places and an arg row in five.
 //
-// Measuring is why a Layout is handed the whole block rather than one row at a
-// time. A column that lines up down the list has to know the widest cell in it
-// before it can render the first, which is what the list screen's rowLayout and
-// the arg screen's labelWidth were each working out on their own.
+// Measuring is why a Layout is handed the whole block — the set of lines sized
+// together — rather than one line at a time. A column that lines up down the
+// list has to know the widest cell in it before it can render the first, which
+// is what the list screen's rowLayout and the arg screen's labelWidth were each
+// working out on their own. The search row and the confirm are blocks of one.
 //
 // Giving up is a list of whole arrangements rather than a set of per-column
-// priorities, because two of these three rows do not merely drop a column when
-// they run out of width — they rearrange. A list row's name is clamped to a
+// priorities, because two of the three that degrade do not merely drop a column
+// when they run out of width — they rearrange. A list row's name is clamped to a
 // band while there is a preview beside it and takes the whole remainder when
 // there is not, and the search row's count shortens ("7/9 · Recently used" →
 // "7/9" → nothing) rather than yielding its column. Both fall out of "try these
@@ -48,13 +50,21 @@ const (
 	spendWidest
 	// spendFlex takes what the other columns leave.
 	spendFlex
-	// spendNone takes nothing and draws nothing. It holds a given-up column's
-	// place so that a row's cells still line up with the arrangement however
-	// many of them are being shown — a candidate drops a column without
-	// renumbering the ones after it, and a block builds its cells once for
-	// every candidate rather than once each.
+	// spendNone is a column this candidate gave up. It takes no width, adds no
+	// lead and draws nothing, and it has nothing it needs. It holds its place so
+	// that a row's cells still line up with the arrangement however many of them
+	// are being shown — a candidate drops a column without renumbering the ones
+	// after it, and a block builds its cells once for every candidate rather
+	// than once each.
 	spendNone
 )
+
+// contentFloor is the least a row's own content may be squeezed to before the
+// row gives a whole column up instead: the value being typed on an arg row, the
+// name being read on a list row. Below eight columns either is more ellipsis
+// than content. One constant rather than one per screen, so the arg row and the
+// list row cannot drift apart on what "too narrow" means.
+const contentFloor = 8
 
 // align is where a column's content sits in its width — and, for the two
 // right-hand kinds, whether that width is reserved before flex takes the rest.
@@ -102,6 +112,11 @@ type column struct {
 	align align
 }
 
+// givenUp is the one question the measuring, the fitting and the painting all
+// have to ask of a column, so it is asked in one vocabulary. See spendNone for
+// what a given-up column costs and draws, which is nothing.
+func (c column) givenUp() bool { return c.spend == spendNone }
+
 // arrangement is one complete set of columns.
 type arrangement []column
 
@@ -127,10 +142,20 @@ type candidate struct {
 // cell is one column's content in one row.
 //
 // runs are text and style, which is what lets a Layout put the selection fill
-// on them: a style can still be added to before it renders. rendered is content
-// that arrived with its escape sequences already emitted — a Field's row, which
-// paints its own caret and, on an arg row, its own fill — and a Layout places
-// it without restyling it, because by then there is nothing left to restyle.
+// on them: a style can still be added to before it renders.
+//
+// rendered is the exception, and the one place a Layout's promise to fill
+// everything it draws stops. It is content that arrived with its escape
+// sequences already emitted — a Field's row, which paints its own caret while
+// it windows its value — and a Layout places it without restyling it. Not by
+// preference: a background cannot be cascaded over an escape sequence that has
+// already been written, so nobody downstream can fill a pre-rendered cell after
+// the fact. The only place the fill can go on is where the sequences are
+// written, which is inside the Field. That is why an arg row's value is filled
+// today — its Field is given a painter that carries the selection colour (see
+// argPaint) — and why it is filled there rather than here. A pass-through cell
+// whose drawer has no such painter is drawn plain, and the bar has a hole in it
+// that no caller of this package can close.
 type cell struct {
 	runs     []run
 	rendered string
@@ -151,10 +176,12 @@ func textCell(text string, style lipgloss.Style) cell {
 // fuzzy-match hits picked out, a meta badge with its two halves.
 func runsCell(runs []run) cell { return cell{runs: runs} }
 
-// fieldCell carries content a Field draws once it is told its width. See cell.
-func fieldCell(draw func(width int) string) cell { return cell{draw: draw} }
+// drawnCell carries content its own drawer renders once it is told its width.
+// See cell for what a Layout can and cannot do to it afterwards, and fieldCell
+// for the only thing that is one.
+func drawnCell(draw func(width int) string) cell { return cell{draw: draw} }
 
-// resolve draws a fieldCell now that its column is sized. Every other cell is
+// resolve draws a drawnCell now that its column is sized. Every other cell is
 // already what it is.
 func (c cell) resolve(width int) cell {
 	if c.draw == nil {
@@ -163,7 +190,7 @@ func (c cell) resolve(width int) cell {
 	return cell{rendered: c.draw(width)}
 }
 
-// width is what the cell wants. An unresolved fieldCell reports nothing, which
+// width is what the cell wants. An unresolved drawnCell reports nothing, which
 // is why one may not sit in a spendWidest column — there would be nothing to
 // measure it by.
 func (c cell) width() int {
@@ -235,6 +262,15 @@ type blockRow struct {
 	selected bool
 }
 
+// sized is an arrangement with its columns allocated across a width. The widths
+// index into the arrangement they were measured for and mean nothing apart from
+// it, so the three travel together rather than being kept in step by hand.
+type sized struct {
+	columns arrangement
+	widths  []int
+	width   int
+}
+
 // layout renders a block into a width, using the first candidate that fits. The
 // last candidate is the fallback and is used whether it fits or not, so there is
 // always a row to draw.
@@ -242,29 +278,34 @@ func layout(width int, candidates ...candidate) []string {
 	if len(candidates) == 0 {
 		return nil
 	}
-	chosen := candidates[len(candidates)-1]
-	widths, drawn, _ := measure(width, chosen)
+	// A candidate is drawn before it can be judged: a trailing column is sized
+	// against the slack the flex column's own content leaves, so whether the
+	// arrangement fits is not known until the Fields in it have been drawn.
+	try := func(c candidate) (sized, []blockRow) {
+		s := allocate(width, c)
+		return s, s.draw(c.rows)
+	}
+
+	chosen, drawn := try(candidates[len(candidates)-1])
 	for _, c := range candidates {
-		if w, d, ok := measure(width, c); ok {
-			chosen, widths, drawn = c, w, d
+		if s, d := try(c); s.fits(d) {
+			chosen, drawn = s, d
 			break
 		}
 	}
 	out := make([]string, 0, len(drawn))
 	for _, row := range drawn {
-		out = append(out, paintRow(width, row, chosen.columns, widths))
+		out = append(out, chosen.paint(row))
 	}
 	return out
 }
 
-// measure allocates every column of an arrangement across the block, draws the
-// Fields now that their columns are sized, and reports whether each column got
-// what it needs.
-func measure(width int, c candidate) ([]int, []blockRow, bool) {
-	a, rows := c.columns, c.rows
+// allocate gives every column of a candidate its width across the block.
+func allocate(width int, c candidate) sized {
+	a := c.columns
 	sizedBy := c.sizedBy
 	if sizedBy == nil {
-		sizedBy = rows
+		sizedBy = c.rows
 	}
 
 	widths := make([]int, len(a))
@@ -273,7 +314,7 @@ func measure(width int, c candidate) ([]int, []blockRow, bool) {
 	// the query — and it is what the other columns leave.
 	flex := -1
 	for i, col := range a {
-		if col.spend == spendNone {
+		if col.givenUp() {
 			continue
 		}
 		switch col.spend {
@@ -316,45 +357,52 @@ func measure(width int, c candidate) ([]int, []blockRow, bool) {
 	if flex >= 0 {
 		widths[flex] = max(0, width-leads-spent)
 	}
+	return sized{columns: a, widths: widths, width: width}
+}
 
-	// The Fields can be drawn now, and have to be: a trailing column is sized
-	// against the slack the flex column's own content leaves.
-	drawn := make([]blockRow, len(rows))
+// draw renders the cells that could not be drawn until their column was sized.
+// Every other cell is already what it is.
+func (s sized) draw(rows []blockRow) []blockRow {
+	out := make([]blockRow, len(rows))
 	for r, row := range rows {
 		cells := make([]cell, len(row.cells))
 		for i, c := range row.cells {
-			if i < len(widths) {
-				c = c.resolve(widths[i])
+			if i < len(s.widths) {
+				c = c.resolve(s.widths[i])
 			}
 			cells[i] = c
 		}
-		drawn[r] = blockRow{cells: cells, selected: row.selected}
+		out[r] = blockRow{cells: cells, selected: row.selected}
 	}
+	return out
+}
 
-	fits := true
-	for i, col := range a {
-		if col.spend == spendNone {
+// fits reports whether every column got the least it can be drawn in. A
+// candidate that does not fit is passed over for the next one.
+func (s sized) fits(rows []blockRow) bool {
+	for i, col := range s.columns {
+		if col.givenUp() {
 			continue
 		}
-		got := widths[i]
+		got := s.widths[i]
 		if col.align == alignTrailing {
 			// A trailing column lives in the slack its flex neighbour leaves,
 			// measured against the fullest row in the block: it is the whole
 			// row that has to fit, not the emptiest one in it.
-			got = slack(drawn, a, widths) - widths[i]
+			got = s.slack(rows) - s.widths[i]
 		}
 		if got < col.needs {
-			fits = false
+			return false
 		}
 	}
-	return widths, drawn, fits
+	return true
 }
 
 // slack is what the flex column's own content leaves unused, at its tightest
 // down the block.
-func slack(rows []blockRow, a arrangement, widths []int) int {
+func (s sized) slack(rows []blockRow) int {
 	out := -1
-	for i, col := range a {
+	for i, col := range s.columns {
 		if col.spend != spendFlex {
 			continue
 		}
@@ -363,7 +411,7 @@ func slack(rows []blockRow, a arrangement, widths []int) int {
 			if i < len(row.cells) {
 				used = row.cells[i].width()
 			}
-			if left := widths[i] - used; out < 0 || left < out {
+			if left := s.widths[i] - used; out < 0 || left < out {
 				out = left
 			}
 		}
@@ -371,8 +419,9 @@ func slack(rows []blockRow, a arrangement, widths []int) int {
 	return max(0, out)
 }
 
-// paintRow lays one row out into the chosen arrangement.
-func paintRow(width int, row blockRow, a arrangement, widths []int) string {
+// paint lays one row out into the arrangement.
+func (s sized) paint(row blockRow) string {
+	width, a, widths := s.width, s.columns, s.widths
 	fill := onSelected(lipglossPlain, row.selected)
 	pad := func(n int) string {
 		if n < 1 {
@@ -386,7 +435,7 @@ func paintRow(width int, row blockRow, a arrangement, widths []int) string {
 	// goes in front of the trailing content instead.
 	trailing := false
 	for _, col := range a {
-		if col.align == alignTrailing && col.spend != spendNone {
+		if col.align == alignTrailing && !col.givenUp() {
 			trailing = true
 		}
 	}
@@ -395,8 +444,8 @@ func paintRow(width int, row blockRow, a arrangement, widths []int) string {
 	used := 0
 	for i, col := range a {
 		// A column that took no width is not drawn and does not lead — see
-		// measure, which did not charge the row for it either.
-		if col.spend == spendNone || (col.spend != spendFlex && widths[i] == 0) {
+		// allocate, which did not charge the row for it either.
+		if col.givenUp() || (col.spend != spendFlex && widths[i] == 0) {
 			continue
 		}
 		var c cell

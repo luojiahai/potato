@@ -357,10 +357,7 @@ func (s *listScreen) searchRow(m *Model, results []library.Command, width int) s
 			columns: searchColumns,
 			rows: []blockRow{{cells: []cell{
 				textCell(searchGlyph, glyph),
-				fieldCell(func(w int) string {
-					rendered, _ := s.query.Rows(w, on)
-					return rendered[0]
-				}),
+				fieldCell(&s.query, on),
 				textCell(form, dimStyle),
 			}}},
 		})
@@ -477,17 +474,18 @@ const (
 // nothing at all. The name is never the column that gives.
 func listColumns(preview, meta bool) arrangement {
 	a := arrangement{
-		colPointer: {spend: spendFixed, n: 2},
+		colPointer: {spend: spendFixed, n: contentIndentWidth},
 		// Sized to the longest name the column would swing with every keystroke
 		// of the query; the band keeps it wide enough to read and narrow enough
 		// to leave the preview something. With no preview beside it there is
-		// nothing to leave, and eight columns is the least a name is worth.
+		// nothing to leave, so the name takes the remainder down to the floor
+		// every row's own content shares.
 		colName:    {spend: spendWidest, clampMin: 12, clampMax: 40},
 		colPreview: {spend: spendFlex, lead: 2, needs: previewFloor},
 		colMeta:    {spend: spendWidest, lead: 2, align: alignRight},
 	}
 	if !preview {
-		a[colName] = column{spend: spendFlex, needs: 8}
+		a[colName] = column{spend: spendFlex, needs: contentFloor}
 		a[colPreview] = column{spend: spendNone}
 	}
 	if !meta {
@@ -593,16 +591,23 @@ func (s *listScreen) block(m *Model, all, visible []library.Command, sel, width 
 // query's hits picked out, a flattened preview of the command itself, and what
 // it asks for and when it was last used.
 func (s *listScreen) rowCells(m *Model, command library.Command, query string, selected bool) []cell {
-	pointer := "  "
-	if selected {
-		pointer = "❯ "
-	}
 	cells := make([]cell, 4)
-	cells[colPointer] = textCell(pointer, accentStyle)
+	cells[colPointer] = pointerCell(selected)
 	cells[colName] = runsCell(nameRuns(query, command.Name))
 	cells[colPreview] = textCell(oneLine(command.Template), dimStyle)
 	cells[colMeta] = runsCell(metaRuns(m, command))
 	return cells
+}
+
+// pointerCell marks the selected row. Blank on every other row rather than
+// absent, so the names below it stay in the column the content indent puts
+// everything else in.
+func pointerCell(selected bool) cell {
+	pointer := contentIndent
+	if selected {
+		pointer = "❯ "
+	}
+	return textCell(pointer, accentStyle)
 }
 
 // confirmRow is the delete confirm in a Command's place: one run across the

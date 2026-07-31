@@ -103,13 +103,19 @@ const (
 )
 
 // argColumns is the arg row's two arrangements. The note yields to the value:
-// it is the first thing given up when the panel is too narrow to carry both,
-// and eight columns is the least a value is worth showing in.
+// it is the first thing given up when the panel is too narrow to carry both.
+//
+// The notes go as a block, all of them or none. Each row used to weigh its own
+// note against its own value, so on a narrow panel a Placeholder with a short
+// note kept it while its neighbour's long one went. Sharing one value column is
+// what lets the values line up, and it is the same trade the label gutter and
+// the list row's name column already make: a column is a property of the block,
+// not of the row that happens to be widest in it.
 func argColumns(withNote bool) arrangement {
 	a := arrangement{
-		argIndent: {spend: spendFixed, n: 2},    // inside the fill, not outside it
-		argLabel:  {spend: spendWidest, pad: 2}, // the gutter the values hang from
-		argValue:  {spend: spendFlex, needs: 8},
+		argIndent: {spend: spendFixed, n: contentIndentWidth}, // inside the fill, not outside it
+		argLabel:  {spend: spendWidest, pad: 2},               // the gutter the values hang from
+		argValue:  {spend: spendFlex, needs: contentFloor},
 		argNote:   {spend: spendWidest, lead: 2, align: alignRight},
 	}
 	if !withNote {
@@ -127,7 +133,9 @@ func argColumns(withNote bool) arrangement {
 // screen marks its selection with, rather than a second focus language for the
 // same idea — so the row carries its own content indent instead of being
 // indented from outside, where the leading spaces would fall outside the fill
-// and break the bar.
+// and break the bar. The Layout fills every run and pad it draws; the value is
+// the one cell it hands over already rendered, and that one is filled by the
+// Field's own painter (see argPaint and cell).
 func (s *argsScreen) rows(width int, on bool) []string {
 	block := make([]blockRow, 0, len(s.ps))
 	withNote := false
@@ -139,13 +147,7 @@ func (s *argsScreen) rows(width int, on bool) []string {
 		cells := make([]cell, 4)
 		cells[argIndent] = cell{} // nothing to draw; the fill runs through it
 		cells[argLabel] = textCell(p.Name, dimStyle)
-		// The Field is drawn once the arrangement has sized its column: it
-		// windows its value around the caret, so it cannot know what it looks
-		// like until it knows how much room it got.
-		cells[argValue] = fieldCell(func(w int) string {
-			rendered, _ := s.form.Field(i).Rows(w, on)
-			return rendered[0]
-		})
+		cells[argValue] = fieldCell(s.form.Field(i), on)
 		cells[argNote] = textCell(note, dimStyle)
 		block = append(block, blockRow{cells: cells, selected: i == s.form.Focused()})
 	}

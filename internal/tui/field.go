@@ -167,6 +167,19 @@ func (f *field) Rows(width int, on bool) ([]string, int) {
 	return wrapStyledHard(paint(value, focused), width, caret, on)
 }
 
+// fieldCell is a lineMode Field as one cell of a Layout. It is drawn late,
+// because a Field windows its value around the caret and so cannot know what it
+// looks like until it is told how much room it got.
+//
+// Free-standing rather than a method on the Field: a Layout is not to know what
+// a Field is, and the Field's interface is not this seam's to widen.
+func fieldCell(f *field, on bool) cell {
+	return drawnCell(func(width int) string {
+		rendered, _ := f.Rows(width, on)
+		return rendered[0]
+	})
+}
+
 // hintRows draws the hint an empty Field shows in place of its value.
 //
 // The caret sits on the hint's first character rather than in a cell of its

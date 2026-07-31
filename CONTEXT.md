@@ -17,7 +17,7 @@ A Command's content without its identity — a name, an optional description, an
 _Avoid_: input, params (a Draft is what a Form's values become)
 
 **Field**:
-One editable value on screen — its text, its caret, and how it draws itself into the width it is given. The search field, the three on the add/edit screen, and one per Placeholder on the arg screen. A Field does not decide how wide it is: a Layout does, and hands it the number. Potato paints every Field's caret itself; the library underneath keeps the value, the cursor and the readline keys.
+One editable value on screen — its text, its caret, and how it draws itself into the width it is given. The search field, the three on the add/edit screen, and one per Placeholder on the arg screen. A Field does not decide how wide it is: it is told, by a Layout on the list and arg screens and by the section it sits in on the add/edit screen. Potato paints every Field's caret itself; the library underneath keeps the value, the cursor and the readline keys.
 _Avoid_: input, textbox
 
 **Form**:
@@ -25,7 +25,7 @@ The ordered Fields a screen holds, with the one focus ring that moves the keyboa
 _Avoid_: fieldset, dialog
 
 **Layout**:
-The cells one line of the frame is laid out from, and the candidate arrangements that fit them to a width. A list row, an arg row, the search row and the delete confirm each go through one, and the Layout owns all four of the decisions they share: how wide each column is, measured across every line at once so the columns line up; what the line gives up as the terminal narrows; the padding between what is left; and the selection bar running unbroken through every run and every pad of it.
+The cells one line of the frame is laid out from, and the candidate arrangements that fit them to a width. A list row, an arg row, the search row and the delete confirm each go through one, and the Layout owns all four of the decisions they share: how wide each column is, measured across the whole *block* — the lines laid out together, which is why a Layout is handed all of them at once and never one alone — so the columns line up down every one of them; what the line gives up as the terminal narrows; the padding between what is left; and the selection bar running unbroken through every run and every pad of it.
 _Avoid_: row (a row is one line of the frame, laid out or not), grid, table
 
 **Placeholder**:
