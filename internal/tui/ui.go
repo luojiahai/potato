@@ -75,6 +75,11 @@ var (
 // occupies exactly this much.
 const contentIndent = "  "
 
+// contentIndentWidth is what that inset costs a Layout, which is told its
+// columns as numbers rather than as strings. Derived rather than written out so
+// that the indent and the pointer cannot be widened apart from each other.
+const contentIndentWidth = len(contentIndent)
+
 // sectionStyle labels a region: muted, so the label names the rule without
 // competing with the content under it.
 func sectionStyle() lipgloss.Style { return boldStyle.Foreground(lipgloss.Color(mutedColor)) }
