@@ -26,15 +26,17 @@ A row carries the command's name, a dim preview of the command itself, and at th
 
 ### Keys
 
-The list screen has two keyboard zones and Tab moves between them. The search field keeps every readline key, including Ctrl-A and Ctrl-E, which is also what your terminal sends for Cmd-Left and Cmd-Right. That is why the verbs live in the other zone, where a bare letter is free to mean something.
+The search field always has the keyboard: type to narrow, and everything else is a chord. The field keeps every readline key, including Ctrl-A and Ctrl-E, which is also what your terminal sends for Cmd-Left and Cmd-Right. That is why the verbs are the chords readline leaves free rather than the mnemonic ones.
 
-| Search field | | Command list | |
-|---|---|---|---|
-| `↵` | run | `↵` | run |
-| `^Y` | copy | `y` | copy |
-| `↑` `↓` | move the selection | `↑` `↓` / `k` `j` | move the selection |
-| `tab` | go to the list | `a` `e` `d` | add, edit, delete |
-| `esc` | quit | `tab` / `esc` | back to the search field |
+| Key | |
+|---|---|
+| `↵` | run |
+| `^N` | add |
+| `^O` | edit |
+| `^X` | delete |
+| `^Y` | copy |
+| `↑` `↓` | move the selection |
+| `esc` | quit |
 
 Adding and editing happen in the app. Nothing sends you out to `$EDITOR`. Ctrl-C leaves from anywhere without handing anything over, and a delete asks first, on the row itself, with the strip still showing what you are about to lose.
 

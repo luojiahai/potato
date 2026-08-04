@@ -117,7 +117,7 @@ func TestCtrlYCopiesWithoutHandingOff(t *testing.T) {
 // Library's own promise, tested in library_test.go.
 func TestAddHandsTheFormsFieldsToTheLibrary(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "a",
+	press(m, []string{"ctrl+n",
 		"new one", "tab", "a description", "tab", "echo new", "enter"})
 
 	if len(rec.libraries) != 1 {
@@ -141,7 +141,7 @@ func TestAddHandsTheFormsFieldsToTheLibrary(t *testing.T) {
 
 func TestEditSavesTheRenamedName(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "e", "ctrl+u", "renamed", "enter"})
+	press(m, []string{"ctrl+o", "ctrl+u", "renamed", "enter"})
 
 	if len(rec.libraries) != 1 {
 		t.Fatalf("saved %d libraries, want 1", len(rec.libraries))
@@ -160,7 +160,7 @@ func TestEditSavesTheRenamedName(t *testing.T) {
 func TestAFailedSaveSaysSoInsteadOfFlashingSaved(t *testing.T) {
 	m, rec := harness(t)
 	rec.failWith = errors.New("read-only file system")
-	press(m, []string{"tab", "a", "doomed", "tab", "tab", "echo x", "enter"})
+	press(m, []string{"ctrl+n", "doomed", "tab", "tab", "echo x", "enter"})
 
 	frame := render(t, m)
 	if strings.Contains(frame, "Added") {
@@ -186,7 +186,7 @@ func findByName(lib library.Library, name string) (library.Command, bool) {
 
 func TestEditRefusesADuplicateName(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "a", "list ports", "tab", "tab", "echo x", "enter"})
+	press(m, []string{"ctrl+n", "list ports", "tab", "tab", "echo x", "enter"})
 
 	if len(rec.libraries) != 0 {
 		t.Error("a duplicate name was saved")
@@ -198,7 +198,7 @@ func TestEditRefusesADuplicateName(t *testing.T) {
 
 func TestEditRefusesAnEmptyName(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "a"})
+	press(m, []string{"ctrl+n"})
 	press(m, []string{"enter"})
 	if len(rec.libraries) != 0 {
 		t.Error("an empty Command was saved")
@@ -213,10 +213,10 @@ func TestEditRefusesAnEmptyName(t *testing.T) {
 // what you are deleting while you answer.
 func TestDeleteConfirmsInlineWithoutLeavingTheList(t *testing.T) {
 	m, _ := harness(t)
-	press(m, []string{"tab", "d"})
+	press(m, []string{"ctrl+x"})
 
 	if _, ok := m.screen.(*listScreen); !ok {
-		t.Fatalf("`d` left the list for %T", m.screen)
+		t.Fatalf("^X left the list for %T", m.screen)
 	}
 	frame := render(t, m)
 	if !strings.Contains(frame, "⚠ Delete 'deploy prod'? y/n") {
@@ -235,7 +235,7 @@ func TestDeleteConfirmsInlineWithoutLeavingTheList(t *testing.T) {
 func TestDeleteConfirmTreatsAnyOtherKeyAsCancel(t *testing.T) {
 	for _, key := range []string{"n", "x", "q"} {
 		m, rec := harness(t)
-		press(m, []string{"tab", "d", key})
+		press(m, []string{"ctrl+x", key})
 		if len(rec.libraries) != 0 {
 			t.Errorf("%q deleted the Command", key)
 		}
@@ -252,7 +252,7 @@ func TestOnlyTheFocusedFieldCarriesTheCaret(t *testing.T) {
 	// on its own.
 	caret := strings.SplitN(caretStyle.Render("x"), "x", 2)[0]
 	m, _ := harness(t)
-	press(m, []string{"tab", "a", "abc"})
+	press(m, []string{"ctrl+n", "abc"})
 
 	if got := strings.Count(m.View().Content, caret); got != 1 {
 		t.Errorf("frame carries %d carets, want exactly 1", got)
@@ -265,7 +265,7 @@ func TestOnlyTheFocusedFieldCarriesTheCaret(t *testing.T) {
 
 func TestDeleteConfirmRemovesTheCommand(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "d", "y"})
+	press(m, []string{"ctrl+x", "y"})
 
 	if len(rec.libraries) != 1 {
 		t.Fatalf("saved %d libraries, want 1", len(rec.libraries))
@@ -282,7 +282,7 @@ func TestDeleteConfirmRemovesTheCommand(t *testing.T) {
 
 func TestDeleteCancelKeepsTheCommand(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "d", "n"})
+	press(m, []string{"ctrl+x", "n"})
 	if len(rec.libraries) != 0 {
 		t.Error("cancelling still wrote the Library")
 	}
@@ -321,7 +321,7 @@ func TestSelectionResetsOnEditButNotOnMotion(t *testing.T) {
 // The bug this key map was rebuilt for: iTerm2's natural-text-editing preset
 // sends 0x01 for ⌘← and 0x05 for ⌘→, which is byte for byte ^A and ^E. Nothing
 // can tell them apart, so the search field has to mean line-start and line-end
-// by them — the list's verbs live where the keyboard is not spelling anything.
+// by them — the list's verbs are chords the field does not claim: ^N, ^O, ^X.
 func TestCtrlAAndCtrlEAreLineStartAndEndInTheSearchField(t *testing.T) {
 	m, _ := harness(t)
 	press(m, []string{"ports"})
@@ -353,10 +353,10 @@ func TestCtrlAAndCtrlEAreLineStartAndEndInTheSearchField(t *testing.T) {
 // The same two keys in the editor, where they have always meant this.
 func TestCtrlAIsLineStartInTheEditor(t *testing.T) {
 	m, _ := harness(t)
-	press(m, []string{"tab", "a"})
+	press(m, []string{"ctrl+n"})
 	edit, ok := m.screen.(*editScreen)
 	if !ok {
-		t.Fatalf("`a` on the list screen opened %T, want the editor", m.screen)
+		t.Fatalf("^N on the list screen opened %T, want the editor", m.screen)
 	}
 	press(m, []string{"abc", "ctrl+a"})
 	if _, still := m.screen.(*editScreen); !still {
@@ -367,25 +367,18 @@ func TestCtrlAIsLineStartInTheEditor(t *testing.T) {
 	}
 }
 
-// The two zones, and the promise each makes: the list zone answers to letters
-// and drops what it does not claim; the search zone never takes one.
-func TestTabHandsTheKeyboardToTheListAndBack(t *testing.T) {
+// Tab has no job on the list screen — the search field always has the keyboard
+// — and it must stay a no-op rather than reach the field, where sanitisation
+// would type it as a space.
+func TestTabIsANoOpOnTheListScreen(t *testing.T) {
 	m, _ := harness(t)
-	press(m, []string{"tab"})
+	press(m, []string{"tab", "shift+tab"})
 	list := m.screen.(*listScreen)
-	if list.focus != focusList {
-		t.Fatal("tab did not hand the keyboard to the list")
+	if !list.query.Focused() {
+		t.Error("tab took the caret from the search field")
 	}
-	if list.query.Focused() {
-		t.Error("the search field kept the caret after tab")
-	}
-
-	press(m, []string{"esc"})
-	if _, still := m.screen.(*listScreen); !still {
-		t.Fatalf("esc from the list zone left for %T, want the search field", m.screen)
-	}
-	if list.focus != focusSearch || !list.query.Focused() {
-		t.Fatal("esc did not hand the keyboard back to the search field")
+	if list.query.Value() != "" {
+		t.Errorf("tab typed into the query: %q", list.query.Value())
 	}
 	press(m, []string{"e"})
 	if list.query.Value() != "e" {
@@ -393,23 +386,9 @@ func TestTabHandsTheKeyboardToTheListAndBack(t *testing.T) {
 	}
 }
 
-func TestListFocusIgnoresKeysItDoesNotClaim(t *testing.T) {
-	m, _ := harness(t)
-	press(m, []string{"down", "tab", "z", "5", "?"})
-	list := m.screen.(*listScreen)
-	if _, still := m.screen.(*listScreen); !still {
-		t.Fatalf("an unclaimed key opened %T", m.screen)
-	}
-	if list.query.Value() != "" {
-		t.Errorf("a blurred field took a keystroke: %q", list.query.Value())
-	}
-	if list.sel != 1 {
-		t.Errorf("sel = %d, want the selection left where it was", list.sel)
-	}
-}
-
-// The guard that stops a future letter binding leaking into the search zone.
-func TestSearchFocusNeverStealsALetter(t *testing.T) {
+// The guard that stops a future letter binding leaking into the key map: the
+// search field always has the keyboard, so no verb may cost it a letter.
+func TestSearchFieldNeverLosesALetter(t *testing.T) {
 	m, _ := harness(t)
 	press(m, []string{"adeyjkq"})
 	if _, still := m.screen.(*listScreen); !still {
@@ -420,61 +399,27 @@ func TestSearchFocusNeverStealsALetter(t *testing.T) {
 	}
 }
 
-func TestJAndKWalkTheListOnlyInListFocus(t *testing.T) {
-	m, _ := harness(t)
-	press(m, []string{"j"})
-	list := m.screen.(*listScreen)
-	if list.query.Value() != "j" || list.sel != 0 {
-		t.Errorf("j in the search field: query %q, sel %d — want it typed", list.query.Value(), list.sel)
-	}
-
-	m, _ = harness(t)
-	press(m, []string{"tab", "j"})
-	if got := m.screen.(*listScreen).sel; got != 1 {
-		t.Errorf("j in the list zone left sel at %d, want 1", got)
-	}
-	press(m, []string{"k"})
-	if got := m.screen.(*listScreen).sel; got != 0 {
-		t.Errorf("k in the list zone left sel at %d, want 0", got)
-	}
-}
-
-// An empty Library has nothing to search and one thing to do.
-func TestAnEmptyLibraryStartsInTheListZone(t *testing.T) {
+// An empty Library has nothing to search and one thing to do, and the panel
+// filling the empty list says which chord does it.
+func TestAnEmptyLibraryOffersTheAddChord(t *testing.T) {
 	deps := fixtureDeps()
 	deps.Library = emptyLibrary()
 	m := New(deps)
 	m.SetSize(80, 24)
 
-	if m.screen.(*listScreen).focus != focusList {
-		t.Fatal("an empty Library did not start in the list zone")
+	if frame := render(t, m); !strings.Contains(frame, "^N  Add your first command") {
+		t.Errorf("the getting-started panel does not offer the add chord:\n%s", frame)
 	}
-	if frame := render(t, m); !strings.Contains(frame, "a  Add your first command") {
-		t.Errorf("the getting-started panel does not offer a one-key add:\n%s", frame)
-	}
-	press(m, []string{"a"})
+	press(m, []string{"ctrl+n"})
 	if _, ok := m.screen.(*editScreen); !ok {
-		t.Fatalf("`a` on a first run opened %T, want the editor", m.screen)
-	}
-}
-
-// esc steps out one level: out of the list zone, then out of potato.
-func TestEscapeStepsOutOneLevel(t *testing.T) {
-	m, _ := harness(t)
-	press(m, []string{"tab", "esc"})
-	if m.quitting {
-		t.Fatal("esc from the list zone quit rather than returning to the field")
-	}
-	press(m, []string{"esc"})
-	if !m.quitting {
-		t.Error("esc from the search field did not quit")
+		t.Fatalf("^N on a first run opened %T, want the editor", m.screen)
 	}
 }
 
 // Either case confirms: a shifted y reports its own text, so it arrives as "Y".
 func TestUppercaseYConfirmsTheDelete(t *testing.T) {
 	m, rec := harness(t)
-	press(m, []string{"tab", "d"})
+	press(m, []string{"ctrl+x"})
 	send(m, tea.KeyPressMsg{Code: 'y', Text: "Y", Mod: tea.ModShift})
 	if len(rec.libraries) != 1 {
 		t.Fatalf("Y saved %d libraries, want 1", len(rec.libraries))
@@ -484,8 +429,25 @@ func TestUppercaseYConfirmsTheDelete(t *testing.T) {
 func TestEscapeQuitsWithoutHandingOff(t *testing.T) {
 	m, _ := harness(t)
 	send(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if !m.quitting {
+		t.Error("esc did not quit the list screen")
+	}
 	if m.Handoff() != "" {
 		t.Errorf("handoff = %q, want empty", m.Handoff())
+	}
+}
+
+// ^D stayed the field's forward-delete when Delete became ^X — the mnemonic
+// chord belongs to readline, the same trade ^A and ^E made (see keys.go).
+func TestCtrlDIsForwardDeleteNotDelete(t *testing.T) {
+	m, _ := harness(t)
+	press(m, []string{"ports", "ctrl+a", "ctrl+d"})
+	list := m.screen.(*listScreen)
+	if got := list.query.Value(); got != "orts" {
+		t.Errorf("query = %q, want %q — ^D must forward-delete in the field", got, "orts")
+	}
+	if list.confirming != "" {
+		t.Error("^D opened the delete confirm")
 	}
 }
 
@@ -497,7 +459,7 @@ func TestDeleteAlsoForgetsTheCommandsState(t *testing.T) {
 	if _, ok := m.st["id-deploy"]; !ok {
 		t.Fatal("the fixture has no State for the Command about to be deleted")
 	}
-	press(m, []string{"tab", "d", "y"})
+	press(m, []string{"ctrl+x", "y"})
 
 	if len(rec.states) == 0 {
 		t.Fatal("no State was saved")
@@ -516,7 +478,7 @@ func TestADeleteThatFailsBothWritesReportsTheLibraryNotTheCache(t *testing.T) {
 	m, rec := harness(t)
 	rec.failWith = errors.New("commands.json is read-only")
 	rec.failStateWith = errors.New("state.json is read-only")
-	press(m, []string{"tab", "d", "y"})
+	press(m, []string{"ctrl+x", "y"})
 
 	frame := render(t, m)
 	if strings.Contains(frame, "Deleted") {

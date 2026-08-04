@@ -4,9 +4,9 @@
    Potato keeps the long commands you can never remember, and hands them back
    to your shell.
 
-   a  Add your first command
-   ↵  Hand it to your shell
-   y  Copy it instead
+   ^N  Add your first command
+   ↵   Hand it to your shell
+   ^Y  Copy it instead
 
    Write {{name}} or {{name=default}} in a command and potato asks for the
    value before handing it over.
@@ -20,4 +20,4 @@
 
 
  ──────────────────────────────────────────────────────────────────────────────
- ↵ Run · a Add · e Edit · d Delete · y Copy · esc Search
+ ↵ Run · ^N Add · ^O Edit · ^X Delete · ^Y Copy · esc Quit

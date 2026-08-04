@@ -67,7 +67,7 @@ func (s *argsScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch {
 		case key.Matches(keyMsg, keymap.args.Back):
-			m.screen = newListScreen(m)
+			m.screen = newListScreen()
 			return nil
 		case key.Matches(keyMsg, keymap.args.Run):
 			return m.run(s.id, s.values())

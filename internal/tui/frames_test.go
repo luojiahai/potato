@@ -74,6 +74,12 @@ func press(m *Model, keys []string) {
 		// what editing an existing Command starts with.
 		case "ctrl+u":
 			send(m, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+		case "ctrl+n":
+			send(m, tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
+		case "ctrl+o":
+			send(m, tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+		case "ctrl+x":
+			send(m, tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl})
 		// ^A, ^E and ^D are kept in this table precisely so the regression
 		// tests can press them and prove they no longer act on the list.
 		case "ctrl+a":
@@ -168,26 +174,22 @@ func TestFrames(t *testing.T) {
 		{name: "list-14x80-scroll-middle", rows: 14, columns: 80, lib: ptr(longLibrary()), keys: down(8)},
 		{name: "list-14x80-scroll-end", rows: 14, columns: 80, lib: ptr(longLibrary()), keys: down(14)},
 
-		// the list screen's other zone: tab hands it the keyboard, and the
-		// footer is the only part of that a de-ANSI'd frame can see
-		{name: "list-24x80-actions", rows: 24, columns: 80, keys: []string{"tab"}},
-
 		// the confirm is inline on the list, not a screen of its own
-		{name: "list-24x80-confirm-delete", rows: 24, columns: 80, keys: []string{"tab", "d"}},
+		{name: "list-24x80-confirm-delete", rows: 24, columns: 80, keys: []string{"ctrl+x"}},
 
 		{name: "args-24x80", rows: 24, columns: 80, keys: []string{"enter"}},
 		{name: "args-24x80-tab", rows: 24, columns: 80, keys: []string{"tail", "enter", "tab"}},
 		{name: "args-14x80-short", rows: 14, columns: 80, keys: []string{"tail", "enter"}},
-		{name: "edit-new-24x80", rows: 24, columns: 80, keys: []string{"tab", "a"}},
-		{name: "edit-new-24x80-refused", rows: 24, columns: 80, keys: []string{"tab", "a", "enter"}},
-		{name: "edit-new-24x80-typed", rows: 24, columns: 80, keys: []string{"tab", "a", "backup", "tab", "tab", "tar -czf {{out=x.tgz}} ."}},
-		{name: "edit-existing-24x80", rows: 24, columns: 80, keys: []string{"tab", "e"}},
-		{name: "edit-existing-14x80-short", rows: 14, columns: 80, keys: []string{"tab", "e"}},
+		{name: "edit-new-24x80", rows: 24, columns: 80, keys: []string{"ctrl+n"}},
+		{name: "edit-new-24x80-refused", rows: 24, columns: 80, keys: []string{"ctrl+n", "enter"}},
+		{name: "edit-new-24x80-typed", rows: 24, columns: 80, keys: []string{"ctrl+n", "backup", "tab", "tab", "tar -czf {{out=x.tgz}} ."}},
+		{name: "edit-existing-24x80", rows: 24, columns: 80, keys: []string{"ctrl+o"}},
+		{name: "edit-existing-14x80-short", rows: 14, columns: 80, keys: []string{"ctrl+o"}},
 
 		// a Command longer than the space it is given: the detail strip caps
 		// and marks what it cut, and the edit screen scrolls to the caret
 		{name: "list-24x80-long", rows: 24, columns: 80, lib: ptr(longCommandLibrary())},
-		{name: "edit-12x80-long", rows: 12, columns: 80, lib: ptr(longCommandLibrary()), keys: []string{"tab", "e"}},
+		{name: "edit-12x80-long", rows: 12, columns: 80, lib: ptr(longCommandLibrary()), keys: []string{"ctrl+o"}},
 	}
 
 	for _, tc := range cases {
@@ -330,11 +332,11 @@ func TestTheFrameHoldsItsHeight(t *testing.T) {
 		"a query that matches nothing": {"zzz"},
 		"a query that matches one":     {"tail"},
 		"the selection moved":          {"down"},
-		"the add form":                 {"tab", "a"},
-		"the add form, typed into":     {"tab", "a", "backup", "tab", "tab", "tar -czf {{out=x.tgz}} ."},
-		"the edit form":                {"tab", "e"},
+		"the add form":                 {"ctrl+n"},
+		"the add form, typed into":     {"ctrl+n", "backup", "tab", "tab", "tar -czf {{out=x.tgz}} ."},
+		"the edit form":                {"ctrl+o"},
 		"the arg screen":               {"enter"},
-		"the delete confirm":           {"tab", "d"},
+		"the delete confirm":           {"ctrl+x"},
 	} {
 		m := New(fixtureDeps())
 		m.SetSize(80, 24)
@@ -353,8 +355,8 @@ func TestDegenerateTerminalSizes(t *testing.T) {
 	screens := map[string][]string{
 		"list":    nil,
 		"args":    {"enter"},
-		"edit":    {"tab", "e"},
-		"confirm": {"tab", "d"},
+		"edit":    {"ctrl+o"},
+		"confirm": {"ctrl+x"},
 		"nomatch": {"zzz"},
 	}
 	for _, size := range [][2]int{{0, 0}, {1, 1}, {2, 2}, {4, 3}, {8, 6}, {20, 10}, {-5, -5}} {

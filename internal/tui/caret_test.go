@@ -56,11 +56,11 @@ func TestTheHintDoesNotStepAsideForTheCaret(t *testing.T) {
 		return 0, ""
 	}
 
-	// `a` opens the add form with the name field holding the keyboard; two tabs
+	// ^N opens the add form with the name field holding the keyboard; two tabs
 	// hand it to the command field, which is still empty and so still showing
 	// the hint.
-	blurred, _ := column([]string{"tab", "a"})
-	focused, frame := column([]string{"tab", "a", "tab", "tab"})
+	blurred, _ := column([]string{"ctrl+n"})
+	focused, frame := column([]string{"ctrl+n", "tab", "tab"})
 
 	if blurred != focused {
 		t.Errorf("the hint sits at column %d blurred and %d focused — it stepped aside for the caret",

@@ -20,4 +20,4 @@
 
 
  ──────────────────────────────────────
- ↵ Run · ^Y Copy · esc Quit
+ ↵ Run · ^N Add · ^O Edit · esc Quit

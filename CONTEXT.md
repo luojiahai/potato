@@ -21,7 +21,7 @@ One editable value on screen — its text, its caret, and how it draws itself in
 _Avoid_: input, textbox
 
 **Form**:
-The ordered Fields a screen holds, with the one focus ring that moves the keyboard between them. Tab is the Form's key, not a screen's. The add/edit screen and the arg screen each hold one; the list screen does not — its focus is a zone, the search field or the results.
+The ordered Fields a screen holds, with the one focus ring that moves the keyboard between them. Tab is the Form's key, not a screen's. The add/edit screen and the arg screen each hold one; the list screen does not — its search field alone holds the keyboard, and every verb is a chord the field does not claim.
 _Avoid_: fieldset, dialog
 
 **Layout**:

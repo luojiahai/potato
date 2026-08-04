@@ -3,7 +3,7 @@
  ──────────────────────────────────────────────────────────────────────────────
    Nothing in your library matches 'zzz'.
 
-   tab a  Add it as a new command
+   ^N  Add it as a new command
 
 
 
@@ -20,4 +20,4 @@
 
 
  ──────────────────────────────────────────────────────────────────────────────
- ↵ Run · ^Y Copy · tab Actions · esc Quit
+ ↵ Run · ^N Add · ^O Edit · ^X Delete · ^Y Copy · esc Quit
