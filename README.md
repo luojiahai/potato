@@ -86,6 +86,7 @@ go run ./cmd/potato     # run the TUI from source
 go test ./...           # test suite
 go vet ./... && gofmt -l .
 bash scripts/build.sh 1.0.0   # compile all four release targets and SHA256SUMS
+bash scripts/screenshots.sh   # retake the screenshots above
 ```
 
 Run from source and Enter prints the selection rather than pre-filling your prompt. The pre-fill lives in the shell wrapper that the installer generates, and no child process can write to its parent's prompt. To exercise the real hand-off, paste this into your zsh:
@@ -100,4 +101,4 @@ pdev() {
 }
 ```
 
-Screen layouts are pinned by the golden frames in `testdata/frames`, and the generated shell glue by `testdata/init`. Regenerate the frames with `go test ./internal/tui -update-frames` after a deliberate visual change, then read the diff. To try a real install without touching your own `~/.potato`, point `POTATO_INSTALL` at a throwaway directory; `internal/shell` documents the rest.
+Screen layouts are pinned by the golden frames in `testdata/frames`, and the generated shell glue by `testdata/init`. Regenerate the frames with `go test ./internal/tui -update-frames` after a deliberate visual change, then read the diff. The two screenshots come from the same renderer: `scripts/screenshots.sh` draws a fixture library on a fixed clock and hands the frames to [freeze](https://github.com/charmbracelet/freeze) (`go install github.com/charmbracelet/freeze@latest`), so retaking them changes only what the screens changed. To try a real install without touching your own `~/.potato`, point `POTATO_INSTALL` at a throwaway directory; `internal/shell` documents the rest.
