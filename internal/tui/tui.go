@@ -86,7 +86,7 @@ func New(deps Deps) *Model {
 	// the first keystroke re-arms it, so a Field that has just been handed the
 	// keyboard looks the same on launch as on a tab round-trip.
 	m.caret.Focus()
-	m.screen = newListScreen(m)
+	m.screen = newListScreen()
 	return m
 }
 

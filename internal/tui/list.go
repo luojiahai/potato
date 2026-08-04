@@ -34,9 +34,9 @@ type listScreen struct {
 
 // newListScreen builds the screen with the search field holding the keyboard,
 // which it keeps for the life of the screen: every verb is a chord the field
-// does not claim, so there is no second zone to hand the keyboard to. See
-// keys.go for why the verbs are the chords they are.
-func newListScreen(*Model) *listScreen {
+// does not claim, so the keyboard never has to leave it. See keys.go for why
+// the verbs are the chords they are.
+func newListScreen() *listScreen {
 	s := &listScreen{query: newField(lineMode)}
 	s.query.Focus()
 	return s

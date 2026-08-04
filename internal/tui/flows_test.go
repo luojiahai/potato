@@ -429,8 +429,25 @@ func TestUppercaseYConfirmsTheDelete(t *testing.T) {
 func TestEscapeQuitsWithoutHandingOff(t *testing.T) {
 	m, _ := harness(t)
 	send(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if !m.quitting {
+		t.Error("esc did not quit the list screen")
+	}
 	if m.Handoff() != "" {
 		t.Errorf("handoff = %q, want empty", m.Handoff())
+	}
+}
+
+// ^D stayed the field's forward-delete when Delete became ^X — the mnemonic
+// chord belongs to readline, the same trade ^A and ^E made (see keys.go).
+func TestCtrlDIsForwardDeleteNotDelete(t *testing.T) {
+	m, _ := harness(t)
+	press(m, []string{"ports", "ctrl+a", "ctrl+d"})
+	list := m.screen.(*listScreen)
+	if got := list.query.Value(); got != "orts" {
+		t.Errorf("query = %q, want %q — ^D must forward-delete in the field", got, "orts")
+	}
+	if list.confirming != "" {
+		t.Error("^D opened the delete confirm")
 	}
 }
 

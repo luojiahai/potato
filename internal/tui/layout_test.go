@@ -259,7 +259,7 @@ func TestTheNotesAreGivenUpAsABlock(t *testing.T) {
 func TestTheSearchRowShortensItsCountBeforeDroppingIt(t *testing.T) {
 	m := New(fixtureDeps())
 	m.SetSize(80, 24)
-	s := newListScreen(m)
+	s := newListScreen()
 	results := s.results(m)
 
 	short := fmt.Sprintf("%d/%d", len(results), len(m.lib.Commands))

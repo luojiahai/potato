@@ -115,7 +115,7 @@ func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch {
 		case key.Matches(keyMsg, keymap.edit.Cancel):
-			m.screen = newListScreen(m)
+			m.screen = newListScreen()
 			return nil
 		case key.Matches(keyMsg, keymap.edit.Save):
 			if s.problem(m) != "" {
@@ -161,7 +161,7 @@ func (s *editScreen) save(m *Model) tea.Cmd {
 	}
 
 	saved := m.updateLibrary(next)
-	m.screen = newListScreen(m)
+	m.screen = newListScreen()
 	return m.finish(verb, saved)
 }
 
