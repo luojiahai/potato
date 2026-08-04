@@ -2,17 +2,15 @@
 // bindings and the footer is rendered from the same values' help text, so what
 // the footer advertises cannot drift from what the screen reads.
 //
-// Why the list screen's verbs are bare letters: a Mac terminal configured for
-// natural text editing — iTerm2's preset, and the equivalents in VS Code, Warp
-// and Ghostty — sends 0x01 for ⌘← and 0x05 for ⌘→, which is byte for byte
-// Ctrl-A and Ctrl-E. Nothing downstream can tell them apart, so a search field
-// that spends ^A on `add` jumps to the add form when its user meant the start
-// of the line. The verbs move to the zone where the keyboard is not spelling
-// anything, and there a bare letter is free.
-//
-// The zones are separate types rather than one flat struct because that is the
-// invariant: a binding whose key set holds a bare letter must be unreachable
-// from the search zone. `y` copies from the list; `^Y` copies from the field.
+// Why the list screen's verbs are ^N, ^O and ^X rather than the mnemonic ^A,
+// ^E and ^D: the search field always has the keyboard, and a Mac terminal
+// configured for natural text editing — iTerm2's preset, and the equivalents
+// in VS Code, Warp and Ghostty — sends 0x01 for ⌘← and 0x05 for ⌘→, which is
+// byte for byte Ctrl-A and Ctrl-E. Nothing downstream can tell them apart, so
+// a field that spends ^A on `add` jumps to the add form when its user meant
+// the start of the line. Every readline chord the field claims — ^A, ^E, ^K,
+// ^U, ^W, and the rest — is the field's for the same reason, and the verbs are
+// picked from what is left.
 
 package tui
 
@@ -20,13 +18,11 @@ import "charm.land/bubbles/v2/key"
 
 type globalKeys struct{ Cancel key.Binding }
 
-// searchKeys are the list screen's chords while the search field holds the
-// keyboard. Nothing here may be a bare letter: every key this zone does not
-// claim belongs to the field, which is the whole point.
-type searchKeys struct{ Run, Copy, Actions, Quit, Up, Down key.Binding }
-
-// listKeys are the same screen's chords while the results hold the keyboard.
-type listKeys struct{ Run, Add, Edit, Delete, Copy, Up, Down, Search, Quit key.Binding }
+// listKeys are the list screen's chords. The search field holds the keyboard
+// for the whole life of the screen, so nothing here may be a bare letter or a
+// readline chord: every key this table does not claim belongs to the field,
+// which is the whole point.
+type listKeys struct{ Run, Add, Edit, Delete, Copy, Up, Down, Quit, Tab key.Binding }
 
 type confirmKeys struct{ Yes, No key.Binding }
 type formKeys struct{ Next, Prev key.Binding }
@@ -35,7 +31,6 @@ type argsKeys struct{ Run, Copy, Back key.Binding }
 
 var keymap = struct {
 	global  globalKeys
-	search  searchKeys
 	list    listKeys
 	confirm confirmKeys
 	form    formKeys
@@ -46,32 +41,24 @@ var keymap = struct {
 	// app has to spend a footer slot advertising.
 	global: globalKeys{Cancel: key.NewBinding(key.WithKeys("ctrl+c"))},
 
-	search: searchKeys{
-		Run:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "Run")),
-		Copy:    key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("^Y", "Copy")),
-		Actions: key.NewBinding(key.WithKeys("tab", "shift+tab"), key.WithHelp("tab", "Actions")),
-		Quit:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "Quit")),
+	list: listKeys{
+		Run:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "Run")),
+		Add:    key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("^N", "Add")),
+		Edit:   key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("^O", "Edit")),
+		Delete: key.NewBinding(key.WithKeys("ctrl+x"), key.WithHelp("^X", "Delete")),
+		Copy:   key.NewBinding(key.WithKeys("ctrl+y"), key.WithHelp("^Y", "Copy")),
 		// The arrows move the selection without leaving the field, so a query
 		// can be narrowed and then walked without a mode change. Unadvertised:
 		// the footer's room is better spent on the keys that need announcing.
 		Up:   key.NewBinding(key.WithKeys("up")),
 		Down: key.NewBinding(key.WithKeys("down")),
-	},
-
-	list: listKeys{
-		Run:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "Run")),
-		Add:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "Add")),
-		Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "Edit")),
-		Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "Delete")),
-		Copy:   key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "Copy")),
-		Up:     key.NewBinding(key.WithKeys("up", "k")),
-		Down:   key.NewBinding(key.WithKeys("down", "j")),
-		Search: key.NewBinding(key.WithKeys("tab", "shift+tab", "esc"), key.WithHelp("esc", "Search")),
-		// Bound but not advertised: the footer's last chord has to be the way
-		// back to the field, and esc from there is the way out of potato. A
-		// seventh chord would make `esc search` the first thing a narrow
-		// terminal drops.
-		Quit: key.NewBinding(key.WithKeys("q")),
+		// Advertised last, where the footer keeps the way out visible as a
+		// narrow terminal drops the chords between it and Run.
+		Quit: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "Quit")),
+		// Tab used to move between the screen's two keyboard zones; the zones
+		// are gone and it means nothing here. Claimed so it is dropped rather
+		// than reaching the field, whose sanitiser would type it as a space.
+		Tab: key.NewBinding(key.WithKeys("tab", "shift+tab")),
 	},
 
 	confirm: confirmKeys{

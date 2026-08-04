@@ -23,52 +23,23 @@ import (
 	"github.com/luojiahai/potato/internal/state"
 )
 
-// focus is which of the list screen's two zones has the keyboard. The screen is
-// split this way so the search field can keep the whole readline key set: every
-// verb lives in the zone where nothing is being spelled, and there a bare
-// letter costs nothing. See keys.go for why that matters.
-type focus int
-
-const (
-	// focusSearch: the query field. Every chord it does not claim belongs to
-	// readline — which is the point. ^A is line-start again.
-	focusSearch focus = iota
-	// focusList: the results. The field is blurred, so the verbs can be plain
-	// letters and an unbound key is dropped rather than typed.
-	focusList
-)
-
 type listScreen struct {
 	query field
 	sel   int
-	focus focus
 	// confirming holds the id of the Command awaiting a delete confirmation,
 	// or "". The confirm is inline rather than a screen of its own so the
 	// detail strip keeps showing what is about to be deleted while you answer.
 	confirming string
 }
 
-func newListScreen(m *Model) *listScreen {
+// newListScreen builds the screen with the search field holding the keyboard,
+// which it keeps for the life of the screen: every verb is a chord the field
+// does not claim, so there is no second zone to hand the keyboard to. See
+// keys.go for why the verbs are the chords they are.
+func newListScreen(*Model) *listScreen {
 	s := &listScreen{query: newField(lineMode)}
-	// An empty Library has nothing to search and one thing to do, and `a` has
-	// to work on the first key a new user presses.
-	if len(m.lib.Commands) == 0 {
-		s.focus = focusList
-		return s
-	}
-	s.setFocus(focusSearch)
-	return s
-}
-
-// setFocus moves the keyboard between the screen's two zones. The caret goes
-// with it: the field that has it is the field that will receive a keystroke.
-func (s *listScreen) setFocus(f focus) {
-	s.focus = f
-	if f != focusSearch {
-		s.query.Blur()
-		return
-	}
 	s.query.Focus()
+	return s
 }
 
 func (s *listScreen) results(m *Model) []library.Command {
@@ -93,9 +64,8 @@ func (s *listScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 
 	// While a confirm is open it owns the keyboard: the answer is one
 	// keystroke, and letting anything else through would let the query change
-	// under a confirm that names a Command by id. It is checked before the
-	// focus branch — from the list zone, `y` is copy, and a confirm that read
-	// it that way would copy the Command it was asking to delete.
+	// under a confirm that names a Command by id — the `y` that answers it
+	// must never reach the field.
 	if s.confirming != "" {
 		if key.Matches(keyMsg, keymap.confirm.Yes) {
 			return s.delete(m)
@@ -104,38 +74,46 @@ func (s *listScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 		return nil
 	}
 
-	if s.focus == focusList {
-		return s.fromList(m, keyMsg)
-	}
-	return s.fromSearch(m, keyMsg)
+	return s.handleKey(m, keyMsg)
 }
 
-// fromSearch handles the screen with the search field holding the keyboard.
-// Only the chords that cannot be typed are claimed; everything else — ^A, ^E,
-// home, end, ^K, ^U, ^W — is the field's own.
-func (s *listScreen) fromSearch(m *Model, msg tea.KeyPressMsg) tea.Cmd {
+// handleKey dispatches a keystroke. Only the chords the field does not claim
+// are matched; everything else — every letter, ^A, ^E, home, end, ^K, ^U, ^W
+// — is the field's own.
+func (s *listScreen) handleKey(m *Model, msg tea.KeyPressMsg) tea.Cmd {
 	switch {
-	case key.Matches(msg, keymap.search.Actions):
-		s.setFocus(focusList)
-		return nil
-	case key.Matches(msg, keymap.search.Quit):
+	case key.Matches(msg, keymap.list.Quit):
 		return m.quit()
-	case key.Matches(msg, keymap.search.Run):
+	case key.Matches(msg, keymap.list.Run):
 		return s.run(m)
-	case key.Matches(msg, keymap.search.Copy):
+	case key.Matches(msg, keymap.list.Copy):
 		return s.copy(m)
-	case key.Matches(msg, keymap.search.Up):
+	case key.Matches(msg, keymap.list.Add):
+		m.screen = newEditScreen(m, nil)
+		return nil
+	case key.Matches(msg, keymap.list.Edit):
+		if selected := s.selected(m); selected != nil {
+			m.screen = newEditScreen(m, selected)
+		}
+		return nil
+	case key.Matches(msg, keymap.list.Delete):
+		if selected := s.selected(m); selected != nil {
+			s.confirming = selected.ID
+		}
+		return nil
+	case key.Matches(msg, keymap.list.Up):
 		s.move(m, -1)
 		return nil
-	case key.Matches(msg, keymap.search.Down):
+	case key.Matches(msg, keymap.list.Down):
 		s.move(m, +1)
+		return nil
+	case key.Matches(msg, keymap.list.Tab):
 		return nil
 	}
 
 	// Editing the query resets the selection; pure cursor motion does not. The
 	// field reports the difference, and this is the only place the query can
-	// change — which is what lets the selection survive a round trip through
-	// the list zone.
+	// change.
 	cmd, edited := s.query.Update(msg)
 	if edited {
 		s.sel = 0
@@ -143,39 +121,8 @@ func (s *listScreen) fromSearch(m *Model, msg tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
-// fromList handles the screen with the results holding the keyboard: the verbs
-// are plain letters, and a key that is not one of them is dropped rather than
-// typed into a field that is not listening.
-func (s *listScreen) fromList(m *Model, msg tea.KeyPressMsg) tea.Cmd {
-	switch {
-	case key.Matches(msg, keymap.list.Search):
-		s.setFocus(focusSearch)
-	case key.Matches(msg, keymap.list.Quit):
-		return m.quit()
-	case key.Matches(msg, keymap.list.Add):
-		m.screen = newEditScreen(m, nil)
-	case key.Matches(msg, keymap.list.Edit):
-		if selected := s.selected(m); selected != nil {
-			m.screen = newEditScreen(m, selected)
-		}
-	case key.Matches(msg, keymap.list.Delete):
-		if selected := s.selected(m); selected != nil {
-			s.confirming = selected.ID
-		}
-	case key.Matches(msg, keymap.list.Run):
-		return s.run(m)
-	case key.Matches(msg, keymap.list.Copy):
-		return s.copy(m)
-	case key.Matches(msg, keymap.list.Up):
-		s.move(m, -1)
-	case key.Matches(msg, keymap.list.Down):
-		s.move(m, +1)
-	}
-	return nil
-}
-
-// run and copy are the two verbs both zones share, and the two that divert to
-// the arg form when the Command has Placeholders to fill in first.
+// run and copy are the two verbs that divert to the arg form when the Command
+// has Placeholders to fill in first.
 func (s *listScreen) run(m *Model) tea.Cmd {
 	selected := s.selected(m)
 	if selected == nil {
@@ -229,12 +176,8 @@ func (s *listScreen) keys(*Model) []footerKey {
 	if s.confirming != "" {
 		return footerKeys(keymap.confirm.Yes, keymap.confirm.No)
 	}
-	if s.focus == focusList {
-		return footerKeys(keymap.list.Run, keymap.list.Add, keymap.list.Edit,
-			keymap.list.Delete, keymap.list.Copy, keymap.list.Search)
-	}
-	return footerKeys(keymap.search.Run, keymap.search.Copy,
-		keymap.search.Actions, keymap.search.Quit)
+	return footerKeys(keymap.list.Run, keymap.list.Add, keymap.list.Edit,
+		keymap.list.Delete, keymap.list.Copy, keymap.list.Quit)
 }
 
 func (s *listScreen) view(m *Model) []string {
@@ -335,13 +278,8 @@ var searchColumns = arrangement{
 // sort order outranks neither.
 func (s *listScreen) searchRow(m *Model, results []library.Command, width int) string {
 	// The glyph carries focus the way an edit screen's section label does:
-	// accent when this field will receive the next keystroke, muted when the
-	// list below has taken the keyboard. The caret says the same thing — a
-	// blurred field draws none — and the footer says it in words.
+	// accent, because this field always receives the next keystroke.
 	glyph := focusStyle()
-	if s.focus != focusSearch {
-		glyph = sectionStyle()
-	}
 	counts := fmt.Sprintf("%d/%d", len(results), len(m.lib.Commands))
 	// The count's forms, longest first. A query has no sort order to report, so
 	// that form is not offered rather than being offered and rejected.
@@ -667,9 +605,9 @@ func metaRuns(m *Model, command library.Command) []run {
 func (s *listScreen) gettingStarted(inner int) []string {
 	out := dimLines("Potato keeps the long commands you can never remember, and hands them back to your shell.", inner)
 	out = append(out, chordRows([]footerKey{
-		{Key: s.addChord(), Desc: "Add your first command"},
+		{Key: keymap.list.Add.Help().Key, Desc: "Add your first command"},
 		{Key: keymap.list.Run.Help().Key, Desc: "Hand it to your shell"},
-		{Key: s.copyChord(), Desc: "Copy it instead"},
+		{Key: keymap.list.Copy.Help().Key, Desc: "Copy it instead"},
 	})...)
 	out = append(out, "")
 	return append(out, dimLines("Write {{name}} or {{name=default}} in a command and potato asks for the value before handing it over.", inner)...)
@@ -678,24 +616,7 @@ func (s *listScreen) gettingStarted(inner int) []string {
 // noMatch fills the list region when the query filters everything out.
 func (s *listScreen) noMatch(query string, inner int) []string {
 	out := dimLines(fmt.Sprintf("Nothing in your library matches '%s'.", query), inner)
-	return append(out, chordRows([]footerKey{{Key: s.addChord(), Desc: "Add it as a new command"}})...)
-}
-
-// addChord and copyChord are what to press from wherever the keyboard is. The
-// verbs live with the list, so from the search field the answer is two presses
-// — which is why an empty Library starts in the list zone, where it is one.
-func (s *listScreen) addChord() string {
-	if s.focus == focusList {
-		return keymap.list.Add.Help().Key
-	}
-	return keymap.search.Actions.Help().Key + " " + keymap.list.Add.Help().Key
-}
-
-func (s *listScreen) copyChord() string {
-	if s.focus == focusList {
-		return keymap.list.Copy.Help().Key
-	}
-	return keymap.search.Copy.Help().Key
+	return append(out, chordRows([]footerKey{{Key: keymap.list.Add.Help().Key, Desc: "Add it as a new command"}})...)
 }
 
 // chordRows renders a column of chord-and-label rows from the bindings

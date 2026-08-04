@@ -34,10 +34,10 @@ func screens(t *testing.T) map[string]string {
 	return out
 }
 
-// Which of the list screen's two zones has the keyboard is carried by the
-// search glyph and by the caret, neither of which survives being de-ANSI'd —
-// so the goldens can only see the footer change. This asserts the rest.
-func TestTheSearchGlyphSaysWhereTheKeyboardIs(t *testing.T) {
+// The search field always has the keyboard, and the glyph and the caret say so
+// — neither survives being de-ANSI'd, so the goldens cannot see either. This
+// asserts they hold through the keystrokes that used to blur the field.
+func TestTheSearchGlyphStaysLit(t *testing.T) {
 	m := New(fixtureDeps())
 	m.SetSize(80, 24)
 	if !strings.Contains(m.View().Content, focusStyle().Render("⌕ ")) {
@@ -45,12 +45,12 @@ func TestTheSearchGlyphSaysWhereTheKeyboardIs(t *testing.T) {
 	}
 
 	press(m, []string{"tab"})
-	if !strings.Contains(m.View().Content, sectionStyle().Render("⌕ ")) {
-		t.Error("the search glyph stayed lit after the list took the keyboard")
+	if !strings.Contains(m.View().Content, focusStyle().Render("⌕ ")) {
+		t.Error("the search glyph went out — tab must not take the keyboard from the field")
 	}
 	caret := strings.SplitN(caretStyle.Render("x"), "x", 2)[0]
-	if strings.Contains(m.View().Content, caret) {
-		t.Error("a blurred search field still carries a caret")
+	if !strings.Contains(m.View().Content, caret) {
+		t.Error("the search field lost its caret")
 	}
 }
 

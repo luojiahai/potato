@@ -10,4 +10,4 @@
    ↓ 6 more
 
  ──────────────────────────────────────────────────────────────────────────────
- ↵ Run · ^Y Copy · tab Actions · esc Quit
+ ↵ Run · ^N Add · ^O Edit · ^X Delete · ^Y Copy · esc Quit
