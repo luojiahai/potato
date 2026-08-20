@@ -3,11 +3,11 @@
 #
 # Both come from the real binary running in a real terminal: vhs drives potato
 # under ttyd in headless Chrome and screenshots it. That is the whole reason for
-# the pipeline. A rasteriser has to reimplement a terminal, and the one this
-# script replaced got two things wrong that the README showed — it drew the
-# potato as a flat silhouette, having no way to read a colour emoji, and it drew
-# the search caret half a cell too wide, padding every background run. A
-# terminal gets both right by being one.
+# the pipeline. Never rasterise the frame instead: a rasteriser has to
+# reimplement a terminal, and the README shows two things it would have to get
+# right — the potato, which is a colour emoji and not a silhouette, and the
+# search caret, which is one cell wide and not one and a half. A terminal gets
+# both right by being one.
 #
 # The library is a fixture, not whatever is in ~/.potato: a screenshot has to be
 # reproducible, and the README should show potato holding a plausible day's work

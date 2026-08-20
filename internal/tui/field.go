@@ -2,16 +2,14 @@
 // renders into a width. The search field, the three add/edit fields, and one
 // per Placeholder on the arg screen are all Fields.
 //
-// Potato paints every caret. It used to paint all but one: the search field
-// drew its own from inside bubbles' textinput, and the rest went through
-// wrapStyledHard, which left two implementations of one cell to keep in step
-// and a test whose whole job was to prove they had not drifted. bubbles keeps
-// the value, the cursor position and the readline key set — ^A, ^E, ^K, ^U, ^W
-// — which is the part worth having; what it draws with them is potato's.
+// Potato paints every caret, the search field's included — never bubbles.
+// bubbles keeps the value, the cursor position and the readline key set — ^A,
+// ^E, ^K, ^U, ^W — which is the part worth having; what it draws with them is
+// potato's. A second implementation of one cell would have to be held in step,
+// with nothing but a test standing over both to say whether it was.
 //
-// That is also what makes the blink one clock. The search field used to blink
-// on the one inside its textinput, which bubbles keeps unexported, so the other
-// fields could not borrow it and ran a copy instead. Now nothing reads it: `on`
+// That is also what makes the blink one clock. bubbles keeps the blink inside
+// its textinput unexported, so no Field can borrow it and none reads it: `on`
 // arrives from the Model's clock, and every caret in the frame is lit or dark
 // together.
 

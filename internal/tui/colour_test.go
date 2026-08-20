@@ -38,7 +38,7 @@ func screens(t *testing.T) map[string]string {
 
 // The search field always has the keyboard, and the glyph and the caret say so
 // — neither survives being de-ANSI'd, so the goldens cannot see either. This
-// asserts they hold through the keystrokes that used to blur the field.
+// asserts they hold through tab, which must not take the keyboard from it.
 func TestTheSearchGlyphStaysLit(t *testing.T) {
 	m := New(fixtureDeps())
 	m.SetSize(80, 24)

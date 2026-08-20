@@ -83,8 +83,7 @@ func TestParseFailsLoud(t *testing.T) {
 // Parse normalises what it decodes, so a Command that came out of a file is
 // indistinguishable from one Add made. That is what lets NameTaken, FreeName and
 // Add agree about a name that arrived padded — see importer's
-// TestMergeKeepsACommandWhoseNameIsPaddedInTheFile, which is the merge that
-// silently dropped a Command while the two disagreed.
+// TestMergeKeepsACommandWhoseNameIsPaddedInTheFile.
 //
 // The template is the exception: leading and trailing whitespace can matter
 // inside a shell command, so it is stored as written.
@@ -430,9 +429,9 @@ func TestFindReturnsACopy(t *testing.T) {
 // ---------- the round-trip guarantee ----------
 
 // Whatever the write interface produces, Save will accept and Parse will read
-// back. This is the promise the interface exists for: mutation used to live in
-// four callers, each re-deriving the rules the parser holds the file to, and any
-// one of them getting it wrong wrote a Library that the next launch refused.
+// back. This is the promise the interface exists for: a caller re-deriving the
+// rules the parser holds the file to and getting one wrong writes a Library
+// that the next launch refuses.
 func TestEveryMutationSequenceStaysReadable(t *testing.T) {
 	lib := Empty()
 	steps := []struct {

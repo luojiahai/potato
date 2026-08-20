@@ -2,21 +2,19 @@
 // candidate arrangements that fit them to a width.
 //
 // Four lines go through a Layout: a list row, an arg row, the search row and
-// the delete confirm. The first three each used to carry their own copy of the
-// same four decisions — measure the widest cell down the block, decide what to
-// give up when the row will not fit, pad what is left, and carry the selection
-// fill through every run and every pad — while the confirm reconstructed the
-// frame's width by summing those columns back up. The fill is the decision that
-// bites. lipgloss cannot cascade a background over an already-rendered escape
-// sequence, so the fill has to go on each run as it is built; a run that skips
-// it punches a hole in the bar, and nothing short of looking at the screen
-// would tell you. A list row applied it in six places and an arg row in five.
+// the delete confirm. A Layout owns the four decisions all of them share —
+// measure the widest cell down the block, decide what to give up when the row
+// will not fit, pad what is left, and carry the selection fill through every
+// run and every pad — and no line works any of them out for itself. The fill is
+// the decision that bites: lipgloss cannot cascade a background over an
+// already-rendered escape sequence, so the fill has to go on each run as it is
+// built; a run that skips it punches a hole in the bar, and nothing short of
+// looking at the screen would tell you.
 //
 // Measuring is why a Layout is handed the whole block — the set of lines sized
 // together — rather than one line at a time. A column that lines up down the
-// list has to know the widest cell in it before it can render the first, which
-// is what the list screen's rowLayout and the arg screen's labelWidth were each
-// working out on their own. The search row and the confirm are blocks of one.
+// list has to know the widest cell in it before it can render the first. The
+// search row and the confirm are blocks of one.
 //
 // Giving up is a list of whole arrangements rather than a set of per-column
 // priorities, because two of the three that degrade do not merely drop a column
@@ -25,8 +23,7 @@
 // there is not, and the search row's count shortens ("7/9 · Recently used" →
 // "7/9" → nothing) rather than yielding its column. Both fall out of "try these
 // arrangements in order, take the first that fits". Neither falls out of a
-// priority, and the search row was already written as a candidate list before
-// there was a Layout to name it one.
+// priority.
 
 package tui
 

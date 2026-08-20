@@ -318,10 +318,10 @@ func TestSelectionResetsOnEditButNotOnMotion(t *testing.T) {
 	}
 }
 
-// The bug this key map was rebuilt for: iTerm2's natural-text-editing preset
-// sends 0x01 for ⌘← and 0x05 for ⌘→, which is byte for byte ^A and ^E. Nothing
-// can tell them apart, so the search field has to mean line-start and line-end
-// by them — the list's verbs are chords the field does not claim: ^N, ^O, ^X.
+// iTerm2's natural-text-editing preset sends 0x01 for ⌘← and 0x05 for ⌘→, which
+// is byte for byte ^A and ^E. Nothing can tell them apart, so the search field
+// has to mean line-start and line-end by them — the list's verbs are chords the
+// field does not claim: ^N, ^O, ^X.
 func TestCtrlAAndCtrlEAreLineStartAndEndInTheSearchField(t *testing.T) {
 	m, _ := harness(t)
 	press(m, []string{"ports"})
@@ -350,7 +350,7 @@ func TestCtrlAAndCtrlEAreLineStartAndEndInTheSearchField(t *testing.T) {
 	}
 }
 
-// The same two keys in the editor, where they have always meant this.
+// The same two keys in the editor, where they mean line-start and line-end.
 func TestCtrlAIsLineStartInTheEditor(t *testing.T) {
 	m, _ := harness(t)
 	press(m, []string{"ctrl+n"})
@@ -451,9 +451,9 @@ func TestCtrlDIsForwardDeleteNotDelete(t *testing.T) {
 	}
 }
 
-// Deleting a Command drops its State command too. State is disposable, so this
-// costs nothing when it is missed — which is exactly why it was missed, and why
-// it is worth pinning: the command used to survive in state.json forever.
+// Deleting a Command drops its State too. State is disposable, so a miss costs
+// nothing the user can see — the State simply survives in state.json forever,
+// which is why it is worth pinning here.
 func TestDeleteAlsoForgetsTheCommandsState(t *testing.T) {
 	m, rec := harness(t)
 	if _, ok := m.st["id-deploy"]; !ok {

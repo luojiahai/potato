@@ -1,10 +1,10 @@
 // The add / edit screen: one ruled section per field, each sized to what it
 // holds, stacked from the top.
 //
-// The sections no longer share out a fixed height between them. Every one is as
-// tall as its own content, so the command field grows downward as you type and
-// pushes `placeholders` along with it, and the slack collects above the footer
-// where nothing frames it.
+// No section is given a share of a fixed height; every one is as tall as its
+// own content, so the command field grows downward as you type and pushes
+// `placeholders` along with it, and the slack collects above the footer where
+// nothing frames it.
 
 package tui
 

@@ -38,8 +38,8 @@ func ParseSha256Sums(text string) map[string]string {
 }
 
 // TargetTriple names the release asset for a platform. Go's own arch name is
-// amd64, but the published assets have always said x64 and installed binaries
-// resolve them by that name — so the wire name is frozen.
+// amd64, but the published assets say x64 and installed binaries resolve them
+// by that name — the wire name is frozen.
 func TargetTriple(goos, goarch string) (string, error) {
 	arch := goarch
 	if arch == "amd64" {

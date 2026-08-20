@@ -112,8 +112,8 @@ func runImport(args []string) {
 	}
 
 	// Version-strict: a v1 incoming file fail-louds ("unsupported version 1").
-	// So does a v1 library of our own — potato has never released a version that
-	// wrote one. See docs/adr/0001-reject-v1-libraries.md.
+	// So does a v1 library of our own — potato writes only v2, so a v1 file of
+	// its own cannot exist.
 	theirs, err := library.Parse(string(text), source)
 	if err != nil {
 		die(err.Error())

@@ -6,9 +6,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// The ring used to be written out once per screen, so these assertions could
-// only be made against one screen at a time and were in practice made against
-// neither. Tab belongs to the Form; this is where it is tested.
+// Tab belongs to the Form, not to a screen, so it is asserted here once rather
+// than against each screen that holds one.
 
 func threeFields() form {
 	return newForm(newField(wrapMode), newField(wrapMode), newField(wrapMode))

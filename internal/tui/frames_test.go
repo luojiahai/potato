@@ -19,12 +19,10 @@ import (
 // terminal sizes with a fixed clock; every frame here must reproduce one byte
 // for byte, de-ANSI'd.
 //
-// These began as captures from the Ink build, held to prove the Go rewrite
-// matched the TypeScript TUI it replaced. That job is done — the goldens were
-// re-baselined onto the Go renderer when the screens were redesigned, and they
-// now guard the Go build against unintended layout drift rather than fidelity
-// to a deleted implementation. Regenerate with `go test ./internal/tui
-// -update-frames` after a deliberate visual change, and read the diff.
+// They guard against unintended layout drift and nothing else: a golden is
+// what the renderer draws today, owed to no other shape. Regenerate with
+// `go test ./internal/tui -update-frames` after a deliberate visual change, and
+// read the diff.
 
 func fixtureDeps() Deps {
 	description := func(s string) *string { return &s }
@@ -80,8 +78,8 @@ func press(m *Model, keys []string) {
 			send(m, tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 		case "ctrl+x":
 			send(m, tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl})
-		// ^A, ^E and ^D are kept in this table precisely so the regression
-		// tests can press them and prove they no longer act on the list.
+		// ^A, ^E and ^D are kept in this table precisely so tests can press
+		// them and prove they reach the field, not the list.
 		case "ctrl+a":
 			send(m, tea.KeyPressMsg{Code: 'a', Mod: tea.ModCtrl})
 		case "ctrl+e":
@@ -213,9 +211,9 @@ func TestFrames(t *testing.T) {
 			}
 			// A row wider than the terminal wraps, and one wrapped row pushes
 			// every row under it down — the frame loses its last line off the
-			// bottom of the screen. The footer used to do exactly this at 50
-			// columns, and being compared de-ANSI'd line by line, the goldens
-			// could not see it.
+			// bottom of the screen. No row may exceed the terminal's width,
+			// and the goldens, compared de-ANSI'd line by line, cannot see one
+			// that does.
 			for i, line := range strings.Split(got, "\n") {
 				if w := ansi.StringWidth(line); w > tc.columns {
 					t.Errorf("line %d is %d columns wide, terminal is %d: %q", i+1, w, tc.columns, line)

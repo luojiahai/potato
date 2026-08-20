@@ -4,14 +4,14 @@
 // file it couldn't parse. Unknown fields are tolerated and preserved; array
 // order is meaningful and kept (renames hold their slot, new Commands append).
 //
-// Mutation lives here too, behind Add / Update / Remove. It used to live in
-// whichever caller needed it — the edit screen, the list screen's delete, the
-// importer — and each of them re-derived the rules the parser would hold the
-// file to: minting an id, keeping names unique, holding a renamed Command's
-// slot, nil-ing an empty description. One of them getting it wrong would have
-// written a Library that the next launch refused to read. Now `validate` is
-// the one statement of those rules, and both Parse and Save run it, so what
-// potato refuses to read and what it refuses to write cannot drift apart.
+// Mutation lives here too, behind Add / Update / Remove, and nowhere else —
+// not in the edit screen, the list screen's delete, or the importer. The rules
+// the parser holds a file to are the rules a mutation has to keep: minting an
+// id, keeping names unique, holding a renamed Command's slot, nil-ing an empty
+// description. A caller re-deriving them and getting one wrong writes a Library
+// that the next launch refuses to read. `validate` is the one statement of
+// those rules, and both Parse and Save run it, so what potato refuses to read
+// and what it refuses to write cannot drift apart.
 //
 // Every Command in a Library is in normalised form, whichever door it came
 // through: `commandFrom` normalises the ones a mutation makes, Parse normalises
@@ -167,8 +167,7 @@ func Update(lib Library, id string, d Draft) (Library, error) {
 // not an error — the Command is already gone, which is what the caller wanted.
 //
 // State is a separate, disposable file: callers pair this with state.Forget so
-// the portable Library and the throwaway cache stay independently owned. See
-// docs/adr/0002-library-does-not-prune-state.md.
+// the portable Library and the throwaway cache stay independently owned.
 func Remove(lib Library, id string) Library {
 	commands := make([]Command, 0, len(lib.Commands))
 	for _, cmd := range lib.Commands {
@@ -283,7 +282,7 @@ func validate(lib Library) string {
 
 // Parse is version-strict: it parses v2 and fail-loud rejects anything else,
 // including v1, which is not migrated — a rejected file is left untouched for
-// the user to convert or delete. See docs/adr/0001-reject-v1-libraries.md.
+// the user to convert or delete.
 //
 // What it decodes is normalised on the way in — the name trimmed, an empty
 // description dropped — so a Command read from a file is indistinguishable from
@@ -384,10 +383,9 @@ func Parse(text, source string) (Library, error) {
 	return lib, nil
 }
 
-// Serialize writes the two-space-indented JSON potato has always written,
-// with a trailing newline. Known keys come first in a fixed order, unknown
-// ones after them sorted; HTML escaping is off, so `&&` and `>` — which are
-// in most shell commands — stay readable.
+// Serialize writes two-space-indented JSON with a trailing newline. Known keys
+// come first in a fixed order, unknown ones after them sorted; HTML escaping is
+// off, so `&&` and `>` — which are in most shell commands — stay readable.
 func Serialize(lib Library) string {
 	var b strings.Builder
 	b.WriteString(`{"version":2,"commands":[`)

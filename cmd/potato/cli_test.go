@@ -10,8 +10,8 @@ import (
 )
 
 // CLI seams: `potato import` (merge / override) run as a real subprocess
-// against a POTATO_INSTALL temp dir, plus `potato init` against the goldens
-// captured from the Ink build.
+// against a POTATO_INSTALL temp dir, plus `potato init` against the shell-glue
+// goldens.
 
 var binary string
 
@@ -232,11 +232,10 @@ func TestImportRejectsAV1IncomingFile(t *testing.T) {
 	}
 }
 
-// A v1 library of our own is refused rather than upgraded. No released version
-// of potato ever wrote one — v2 landed before v0.1.1, the first tag — so the
-// upgrade path was serving a file that cannot exist. See
-// docs/adr/0001-reject-v1-libraries.md. It must fail loud rather than silently
-// treat the library as empty, which would look exactly like data loss.
+// A v1 library of our own is refused rather than upgraded: potato writes only
+// v2, so a v1 file of its own cannot exist and there is nothing for an upgrade
+// path to serve. It must fail loud rather than silently treat the library as
+// empty, which would look exactly like data loss.
 func TestOwnV1LibraryIsRefusedNotMigrated(t *testing.T) {
 	home := t.TempDir()
 	v1 := `{"version":1,"commands":{"legacy":{"command":"echo old"}}}`
@@ -265,7 +264,7 @@ func TestOwnV1LibraryIsRefusedNotMigrated(t *testing.T) {
 
 // The installer regenerates the shell glue from the binary on every install
 // and every update, so any drift silently rewrites every user's rc hook.
-func TestInitMatchesTheInkGoldens(t *testing.T) {
+func TestInitMatchesTheGoldens(t *testing.T) {
 	for _, shell := range []string{"zsh", "bash", "sh"} {
 		t.Run(shell, func(t *testing.T) {
 			got := run(t, []string{"init", shell}, "/POTATO", "")
