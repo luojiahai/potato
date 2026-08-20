@@ -6,6 +6,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"charm.land/lipgloss/v2"
+	"github.com/luojiahai/potato/internal/search"
 )
 
 // The frame goldens are compared de-ANSI'd, so nothing there would notice if
@@ -117,4 +120,37 @@ func truecolorFg(hex string) string {
 	var r, g, b int
 	fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
 	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", r, g, b)
+}
+
+// Fuzzy-match hits are painted rune by rune from the positions search hands
+// back — a map keyed by rune index, one entry per hit. Nothing else in the
+// suite can see whether they land: the frame goldens are compared de-ANSI'd,
+// and TestViewCarriesTheBrandColours only asks whether highlightColor is on
+// the wire at all, which it is either way because Placeholders wear it too.
+// So this walks the seam itself and asks which runes came back lit.
+func TestEveryNameMatchIsHighlighted(t *testing.T) {
+	lit := boldStyle.Foreground(lipgloss.Color(highlightColor)).GetForeground()
+	for _, tc := range []struct{ query, name string }{
+		{"li", "list ports"},   // hits at the front
+		{"port", "list ports"}, // hits past the number of hits
+		{"y", "deploy prod"},   // one hit, well past it
+		{"dp", "deploy prod"},  // one at the front, one past
+		{"tl", "tail logs"},
+	} {
+		want, ok := search.NameMatchIndices(tc.query, tc.name)
+		if !ok {
+			t.Fatalf("%q does not match %q — the fixture is wrong", tc.query, tc.name)
+		}
+		runs := nameRuns(tc.query, tc.name)
+		if len(runs) != len([]rune(tc.name)) {
+			t.Fatalf("nameRuns(%q, %q) returned %d runs, want one per rune (%d)",
+				tc.query, tc.name, len(runs), len([]rune(tc.name)))
+		}
+		for i, r := range runs {
+			if got := r.style.GetForeground() == lit; got != want[i] {
+				t.Errorf("nameRuns(%q, %q): rune %d (%q) lit=%v, want %v",
+					tc.query, tc.name, i, r.text, got, want[i])
+			}
+		}
+	}
 }
