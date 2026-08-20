@@ -1,4 +1,4 @@
-# <img src="docs/media/brand/potato-app-icon.svg" alt="" width="32" height="32"> Potato
+# 🥔 Potato
 
 Potato keeps the long terminal commands you can never remember, finds them by fuzzy search, and hands them back. It never runs anything itself. Enter drops the finished command at your shell prompt so you can read it before you commit to it, and Ctrl-Y puts it on your clipboard instead.
 
