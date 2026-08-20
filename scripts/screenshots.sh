@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 # Retake the README's screenshots (docs/media/list.png, docs/media/arguments.png).
 #
-# scripts/screenshots renders the screens to ANSI over a fixture library and a
-# fixed clock; freeze turns each into a PNG. The flags below are the house
-# style, and are what keeps the two images looking like one set: potato's own
-# rule colour around a warm-dark window, and Menlo, which is on every mac and
-# carries the box-drawing glyphs the frame is built from.
+# Both come from the real binary running in a real terminal: vhs drives potato
+# under ttyd in headless Chrome and screenshots it. That is the whole reason for
+# the pipeline. A rasteriser has to reimplement a terminal, and the one this
+# script replaced got two things wrong that the README showed — it drew the
+# potato as a flat silhouette, having no way to read a colour emoji, and it drew
+# the search caret half a cell too wide, padding every background run. A
+# terminal gets both right by being one.
 #
-# Needs freeze: go install github.com/charmbracelet/freeze@latest
+# The library is a fixture, not whatever is in ~/.potato: a screenshot has to be
+# reproducible, and the README should show potato holding a plausible day's work
+# rather than the author's. POTATO_INSTALL puts it somewhere disposable, which
+# is also where the binary is built, so the screens are always HEAD's.
+#
+# Needs vhs: brew install vhs
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -16,24 +23,44 @@ cd "$(dirname "$0")/.."
 version="${1:-$(git describe --tags --abbrev=0 2>/dev/null || echo dev)}"
 version="${version#v}"
 
-if ! command -v freeze >/dev/null 2>&1; then
-  echo "screenshots: freeze not found — go install github.com/charmbracelet/freeze@latest" >&2
+if ! command -v vhs >/dev/null 2>&1; then
+  echo "screenshots: vhs not found — brew install vhs" >&2
   exit 1
 fi
 
-background="#14100a" # the terminal under potato, a shade off its own ink
-rule="#5c4a2e"       # ruleColor: the window border is the frame's own hairline
+home="$(mktemp -d)"
+trap 'rm -rf "$home"' EXIT
 
-frames="$(mktemp -d)"
-trap 'rm -rf "$frames"' EXIT
+# The last-used times are written relative to now, so "2h ago" reads the same
+# whenever the screenshots are retaken. timeAgo truncates, so a capture that
+# starts a minute later still rounds down to the same label.
+ago() { date -u -v-"$1" +%Y-%m-%dT%H:%M:%SZ; }
 
-go run ./scripts/screenshots -out "$frames" -version "$version" -background "$background"
+cp scripts/screenshots/commands.json "$home/commands.json"
+sed -e "s/@2H@/$(ago 2H)/" \
+    -e "s/@20H@/$(ago 20H)/" \
+    -e "s/@48H@/$(ago 48H)/" \
+    scripts/screenshots/state.json.tmpl > "$home/state.json"
+
+go build -ldflags "-X github.com/luojiahai/potato/internal/version.Version=${version}" \
+  -o "$home/bin/potato" ./cmd/potato
+
+# vhs hands its own environment to the shell it opens, so the tapes read
+# $POTATO_INSTALL rather than carrying a path that would have to be templated in.
+export POTATO_INSTALL="$home"
 
 for screen in list arguments; do
-  # Padding is short at the bottom because freeze reserves a line's descent
-  # there that nothing is drawn in; trimming it leaves the frame centred.
-  freeze "$frames/$screen.ansi" -o "docs/media/$screen.png" \
-    --font.family Menlo --font.size 8 --line-height 1.4 \
-    --background "$background" --margin 10 --padding 14,14,2,14 \
-    --border.radius 6 --border.width 1 --border.color "$rule"
+  echo "screenshots: ${screen}…"
+  out="docs/media/$screen.png"
+  # vhs answers a runtime failure with a message and an exit status of 0 — a
+  # tape that opens no terminal, or whose last shutter falls off the end of the
+  # recording, leaves the previous PNG sitting there and says nothing. Taking
+  # the file away first is what turns that into a stop rather than a stale
+  # image committed by mistake.
+  rm -f "$out"
+  vhs "scripts/screenshots/$screen.tape"
+  if [ ! -f "$out" ]; then
+    echo "screenshots: $screen.tape recorded nothing — $out was not written" >&2
+    exit 1
+  fi
 done

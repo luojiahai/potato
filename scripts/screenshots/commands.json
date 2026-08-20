@@ -1,0 +1,47 @@
+{
+  "version": 2,
+  "commands": [
+    {
+      "id": "id-deploy",
+      "name": "deploy web",
+      "description": "Roll out the web tier",
+      "command": "ssh {{host=prod-1}} 'cd /srv/web && git pull && systemctl restart web'"
+    },
+    {
+      "id": "id-logs",
+      "name": "tail app logs",
+      "description": "Follow one app's log, filtered",
+      "command": "tail -f /var/log/{{app}}/app.log | grep -i {{pattern=error}}"
+    },
+    {
+      "id": "id-psql",
+      "name": "db shell",
+      "description": "Open a psql session",
+      "command": "psql \"postgres://{{user=app}}@{{host=db-1}}:5432/{{db=app}}\""
+    },
+    {
+      "id": "id-ports",
+      "name": "port hogs",
+      "description": "Show what is listening",
+      "command": "lsof -iTCP -sTCP:LISTEN -P -n"
+    },
+    {
+      "id": "id-sync",
+      "name": "sync build",
+      "description": "Push a build to a host",
+      "command": "rsync -avz --delete --progress ./{{src=dist}}/ {{user=deploy}}@{{host}}:/srv/{{app}}/"
+    },
+    {
+      "id": "id-prune",
+      "name": "prune docker",
+      "description": "Reclaim disk from docker",
+      "command": "docker system prune -af --volumes"
+    },
+    {
+      "id": "id-undo",
+      "name": "undo commit",
+      "description": "Keep the changes, drop the commit",
+      "command": "git reset --soft HEAD~1"
+    }
+  ]
+}
