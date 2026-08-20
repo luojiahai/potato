@@ -1,11 +1,11 @@
 // The list screen: a full-width fuzzy-search list, with the selected Command's
 // detail in a strip under it.
 //
-// The list used to be thirty columns of names beside a detail pane, which gave
-// a Command's text under half the terminal — on a tool whose whole premise is
-// commands too long to remember. Full width lets the row carry a dim preview of
-// the command itself, so the list can be scanned without walking the selection
-// down it, and lets the detail strip show the command unwrapped.
+// The list takes the full width rather than a column of names beside a detail
+// pane: on a tool whose whole premise is commands too long to remember, a
+// Command's text is worth the whole terminal. Full width lets the row carry a
+// dim preview of the command itself, so the list can be scanned without walking
+// the selection down it, and lets the detail strip show the command unwrapped.
 
 package tui
 
@@ -158,8 +158,8 @@ func (s *listScreen) move(m *Model, delta int) {
 //
 // Both files are written: the Library loses the Command and State loses its
 // cache entry. They are separate calls because they are separate files with
-// separate lifetimes — see docs/adr/0002 — and this is the one place that knows
-// a Command is being destroyed rather than merely edited.
+// separate lifetimes, and this is the one place that knows a Command is being
+// destroyed rather than merely edited.
 func (s *listScreen) delete(m *Model) tea.Cmd {
 	command, ok := library.Find(m.lib, s.confirming)
 	s.confirming = ""
@@ -193,9 +193,9 @@ func (s *listScreen) content(m *Model) []string {
 	sel := min(s.sel, max(0, len(results)-1))
 
 	// The brand rides the frame's top rule the way every section label rides
-	// its own, and the version rides the right end — one row for what the
-	// seven-row wordmark and its strapline used to spend eight on. It gives the
-	// frame a top edge to answer the footer's bottom one.
+	// its own, and the version rides the right end — one row for the whole
+	// header, on a screen whose rows belong to the list. It gives the frame a
+	// top edge to answer the footer's bottom one.
 	//
 	// The potato is the one glyph here that costs two columns rather than one.
 	// Nothing needs to know that: rule measures its label with StringWidth, so
@@ -264,17 +264,18 @@ const (
 // The count trails rather than holding a column of its own, so the field is
 // given the row less its glyph. A query longer than that slides under its own
 // caret rather than being windowed into a narrower column — or running off the
-// end of the frame to be cut by the clamp in View, which took the caret with it.
+// end of the frame, where the clamp in View would cut it and take the caret
+// with it.
 var searchColumns = arrangement{
 	{spend: spendFixed, n: searchGlyphWidth},
 	{spend: spendFlex, needs: 1},
 	{spend: spendWidest, align: alignTrailing, needs: 1},
 }
 
-// searchRow is the prompt and the result count on one row — where the search
-// field used to cost three, two of them border. The count yields to the query
-// as the row narrows: what you are typing outranks how much it found, and the
-// sort order outranks neither.
+// searchRow is the prompt and the result count on one unframed row: the search
+// field costs one row, not the three a box would spend on it. The count yields
+// to the query as the row narrows — what you are typing outranks how much it
+// found, and the sort order outranks neither.
 func (s *listScreen) searchRow(m *Model, results []library.Command, width int) string {
 	// The glyph carries focus the way an edit screen's section label does:
 	// accent, because this field always receives the next keystroke.
@@ -673,12 +674,13 @@ func placeholderRows(ps []placeholders.Placeholder, width int) []string {
 // right — so a hit that falls off the end simply has nothing left to paint.
 //
 // The positions arrive as a map keyed by rune index, holding one entry per
-// hit. A guard here once asked `i < len(matches)` before reading it, which is
-// the length a []bool would have had: it admitted only the first len(matches)
-// runes of the name and dropped every hit past them, so a query matching
-// anywhere but the front of a name lit less than all of itself — and one
-// hitting no earlier than len(matches) lit nothing at all.
-// A missing key reads false on its own; there is nothing to guard.
+// hit, so its length is the number of hits and not the number of runes. Never
+// guard the read with `i < len(matches)`, the length a []bool would have: that
+// admits only the first len(matches) runes of the name and drops every hit past
+// them, so a query matching anywhere but the front of a name lights less than
+// all of itself, and one whose first hit falls at or past len(matches) lights
+// nothing at all. A missing key reads false on its own; there is nothing to
+// guard.
 func nameRuns(query, name string) []run {
 	plain := titleStyle()
 	hit := hitStyle()

@@ -55,9 +55,9 @@ var keymap = struct {
 		// Advertised last, where the footer keeps the way out visible as a
 		// narrow terminal drops the chords between it and Run.
 		Quit: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "Quit")),
-		// Tab used to move between the screen's two keyboard zones; the zones
-		// are gone and it means nothing here. Claimed so it is dropped rather
-		// than reaching the field, whose sanitiser would type it as a space.
+		// Tab means nothing on this screen: the search field holds the
+		// keyboard alone. Claimed so it is dropped rather than reaching the
+		// field, whose sanitiser would type it as a space.
 		Tab: key.NewBinding(key.WithKeys("tab", "shift+tab")),
 	},
 

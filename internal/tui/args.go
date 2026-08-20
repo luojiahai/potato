@@ -105,12 +105,12 @@ const (
 // argColumns is the arg row's two arrangements. The note yields to the value:
 // it is the first thing given up when the panel is too narrow to carry both.
 //
-// The notes go as a block, all of them or none. Each row used to weigh its own
-// note against its own value, so on a narrow panel a Placeholder with a short
-// note kept it while its neighbour's long one went. Sharing one value column is
-// what lets the values line up, and it is the same trade the label gutter and
-// the list row's name column already make: a column is a property of the block,
-// not of the row that happens to be widest in it.
+// The notes go as a block, all of them or none — never row by row, which on a
+// narrow panel would keep a Placeholder's short note while its neighbour's long
+// one goes. Sharing one value column is what lets the values line up, and it is
+// the same trade the label gutter and the list row's name column already make:
+// a column is a property of the block, not of the row that happens to be widest
+// in it.
 func argColumns(withNote bool) arrangement {
 	a := arrangement{
 		argIndent: {spend: spendFixed, n: contentIndentWidth}, // inside the fill, not outside it
@@ -167,9 +167,9 @@ func (s *argsScreen) view(m *Model) []string {
 	// decided, so they carry the highlight and the rest reads as plain text.
 	preview := withPrompt(renderRuns(s.command, s.values()))
 
-	// `will run` sits directly under the arg rows it is the result of, rather
-	// than absorbing the free height the way the old panel did — a sixteen-row
-	// box around a one-line command.
+	// `will run` sits directly under the arg rows it is the result of and takes
+	// only the height its content needs. The free height collects below it,
+	// rather than swelling a box around a one-line command.
 	top = append(top, "")
 	top = append(top, section(width, "Will run", sectionStyle(), "", wrapStyled(preview, width-2))...)
 	return pin(top, nil, m.bodyHeight())

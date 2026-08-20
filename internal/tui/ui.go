@@ -3,18 +3,18 @@
 //
 // Structure comes from rules and alignment rather than from boxes. A framed
 // panel spends two rows and four columns on every region it draws, and fences
-// whatever space it cannot fill — which is how a three-command library used to
-// render sixteen rows of empty box. A rule costs one row, no columns, and
-// leaves the slack around it as plain unframed space, which reads as space
-// rather than as something unfinished.
+// whatever space it cannot fill — a three-command library inside one would be
+// sixteen rows of empty box. A rule costs one row, no columns, and leaves the
+// slack around it as plain unframed space, which reads as space rather than as
+// something unfinished.
 //
 // Brand golds: a dim warm brown for the rules, which are structure and should
-// recede — a full-width rule in the old border gold was louder than the box
-// edges it replaces; the brighter gold for controls (footer chords, pointer,
-// focus); the brightest for the things worth spotting inside a command —
-// placeholders and fuzzy-match hits. Command text is a warm off-white so
-// content reads as content rather than as a second accent competing with the
-// chrome.
+// recede — a full-width rule in a brighter gold shouts across the frame where a
+// box edge only outlines one; the brighter gold for controls (footer chords,
+// pointer, focus); the brightest for the things worth spotting inside a
+// command — placeholders and fuzzy-match hits. Command text is a warm
+// off-white so content reads as content rather than as a second accent
+// competing with the chrome.
 
 package tui
 
@@ -30,11 +30,10 @@ import (
 	"github.com/luojiahai/potato/internal/version"
 )
 
-// One warm family, every colour given in truecolor. The ANSI indices this
-// palette replaced were whatever the user's terminal theme said they were, so
-// half of potato's colours used to be outside potato's control and could land
-// anywhere against the golds — a cool cyan on a Nord theme, a green-ish yellow
-// on Solarized. Naming the values fixes the relationships on every terminal.
+// One warm family, every colour given in truecolor — never an ANSI index,
+// which is whatever the user's terminal theme says it is and can land anywhere
+// against the golds: a cool cyan on a Nord theme, a green-ish yellow on
+// Solarized. Naming the values fixes the relationships on every terminal.
 const (
 	ruleColor      = "#5c4a2e" // hairline rules
 	accentColor    = "#ffaf5f" // controls: footer chords, pointers, focus
@@ -108,9 +107,9 @@ const brand = "🥔 Potato"
 // rule rather than marking something you can press.
 func brandStyle() lipgloss.Style { return boldStyle.Foreground(lipgloss.Color(accentColor)) }
 
-// versionLabel is what the header rule carries at its right end. The repo link
-// that used to sit beside it lives in `potato --help`, which is where you look
-// when you want it; the running version is worth a glance every launch.
+// versionLabel is what the header rule carries at its right end, and all it
+// carries: the repo link lives in `potato --help`, which is where you look when
+// you want it, while the running version is worth a glance every launch.
 func versionLabel() string {
 	if version.Version == "dev" {
 		return version.Version
@@ -189,9 +188,9 @@ func indent(rows []string) []string {
 // against the footer, and blank rows between them.
 //
 // Every screen is exactly the session's body height — see Model.bodyHeight. The
-// blanks are not the framed void the boxes used to draw: they are the bottom of
-// a block that holds still while you type, in a terminal that would otherwise
-// reflow under it on every keystroke.
+// blanks are unframed, so they read as the bottom of a block that holds still
+// while you type, in a terminal that would otherwise reflow under it on every
+// keystroke.
 //
 // The status line — the edit screen's validation warning — keeps its rows when
 // the two blocks together will not fit. The top block is the one that gives,

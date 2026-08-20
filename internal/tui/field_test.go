@@ -9,9 +9,9 @@ import (
 )
 
 // A Field's rules — which way the value moves when it outgrows its room, which
-// row the caret lands on, what an empty one shows — used to be observable only
-// through a whole 80×24 frame, and the frame goldens are compared de-ANSI'd and
-// cannot see a caret at all. These reach the Field directly.
+// row the caret lands on, what an empty one shows — are reached directly here
+// rather than through a whole 80×24 frame, which the goldens compare de-ANSI'd
+// and so cannot see a caret in at all.
 //
 // Not covered, because it cannot be reached: the caret clamp in Rows and
 // windowValue. bubbles re-clamps the cursor into the value on every SetValue
@@ -129,9 +129,10 @@ func TestAWideRuneQueryKeepsItsCaretInTheFrame(t *testing.T) {
 	}
 }
 
-// The search field is a Field like any other, which is what gives it the
-// windowing it never had: it used to render its whole value and let the frame's
-// clamp cut the overflow, and the caret went with it.
+// The search field is a Field like any other, so it windows its value like any
+// other: a query longer than the row slides under its own caret rather than
+// being rendered whole for the frame's clamp to cut, which would take the caret
+// with it.
 func TestALongQueryKeepsItsCaretInTheFrame(t *testing.T) {
 	m := New(fixtureDeps())
 	m.SetSize(40, 24)

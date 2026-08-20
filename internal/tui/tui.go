@@ -25,12 +25,11 @@ import (
 
 // Deps are the effects the TUI needs, injected so tests can observe them.
 //
-// The two saves report failure. They used to return nothing, and the closures
-// wiring them to the disk discarded the error — so a Library that failed to
-// write looked exactly like one that wrote, and the edit screen flashed "Saved"
-// on the strength of a call it could not see fail. Now that library.Save also
-// refuses a Library it would not be able to read back, a save has a second way
-// to fail that the user has to hear about.
+// The two saves report failure, and every caller must surface it: a discarded
+// error makes a Library that failed to write look exactly like one that wrote,
+// and the edit screen flashes "Saved" on the strength of a call it could not
+// see fail. library.Save also refuses a Library it would not be able to read
+// back, so a save has a second way to fail that the user has to hear about.
 type Deps struct {
 	Library     library.Library
 	State       state.State
@@ -61,13 +60,12 @@ type Model struct {
 	// quitting makes the next frame an empty one, erasing the inline block.
 	quitting bool
 	screen   screen
-	// caret is the blink clock for every Field in the frame. It used to be the
-	// clock for all but one: the search field blinked on the one inside its
-	// textinput, which bubbles keeps unexported and unreadable, so the rest ran
-	// a copy of it and a test stood over the two to prove they had not drifted.
-	// Now potato paints every caret and nothing reads the one inside — there is
-	// this clock and no other. Only one Field has the keyboard at a time, so one
-	// clock is all there is to keep.
+	// caret is the blink clock for every Field in the frame — this clock and no
+	// other. bubbles keeps the one inside its textinput unexported and
+	// unreadable, so a Field blinking on it would be running a copy nothing
+	// could hold in step; potato paints every caret and nothing reads that one.
+	// Only one Field has the keyboard at a time, so one clock is all there is to
+	// keep.
 	caret cursor.Model
 }
 
@@ -94,9 +92,8 @@ func New(deps Deps) *Model {
 func (m *Model) Handoff() string { return m.handoff }
 
 // SetSize adopts a terminal size, ignoring the degenerate one. A pty that
-// reports no window size (`script`, some CI runners) delivers 0×0; the Ink
-// build fell back to 80×24 there via `stdout.columns ?? 80`, and so do we —
-// rendering into zero columns has no sensible answer.
+// reports no window size (`script`, some CI runners) delivers 0×0, and the
+// fallback stays 80×24 — rendering into zero columns has no sensible answer.
 func (m *Model) SetSize(width, height int) {
 	if width > 0 {
 		m.width = width
@@ -115,14 +112,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.SetSize(msg.Width, msg.Height)
 		return m, nil
 	case flashExpiredMsg:
-		// Parity with the Ink build: a pending timer clears whatever flash is
-		// showing, even one raised after it.
+		// A pending timer clears whatever flash is showing, even one raised
+		// after it.
 		m.flash = ""
 		return m, nil
 	case tea.KeyPressMsg:
 		if key.Matches(msg, keymap.global.Cancel) {
-			// Ink's exitOnCtrlC: quit with no hand-off, so the --out file is
-			// written empty and the wrapper treats it as cancelled.
+			// Quit with no hand-off, so the --out file is written empty and
+			// the wrapper treats it as cancelled.
 			return m, m.quit()
 		}
 		// A caret that blinked while you were typing under it would read as a

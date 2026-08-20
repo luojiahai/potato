@@ -7,19 +7,19 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// Every caret in the frame is drawn by one Field, so there is no longer a
-// second implementation to keep in step — what used to be asserted here is now
-// true by construction. The frame goldens are compared de-ANSI'd and cannot see
-// a caret at all. These assert that it survives the trim, that it sits where it
-// should, and that the blink only changes what colour its cell is — never the
-// row around it.
+// Every caret in the frame is drawn by one Field, so there is no second
+// implementation to hold in step. The frame goldens are compared de-ANSI'd and
+// cannot see a caret at all. These assert that it survives the trim, that it
+// sits where it should, and that the blink only changes what colour its cell is
+// — never the row around it.
 
 // The caret has to survive the trim every row goes through on the way out of
 // View. A field's row ends at its value, so a caret parked past the last
-// character is the last thing on the line, and the trim took it for padding —
-// leaving the escape sequences with nothing between them, which draws nothing.
-// The whole cell is matched here, not the colour that opens it: an empty run
-// carries the colour too, which is why nothing else in the suite noticed.
+// character is the last thing on the line, where the trim can take it for
+// padding — leaving the escape sequences with nothing between them, which draws
+// nothing. The whole cell is matched here, not the colour that opens it: an
+// empty run carries the colour too, so matching the colour alone would pass on
+// a caret that draws nothing.
 func TestTheCaretSurvivesTheTrim(t *testing.T) {
 	for name, keys := range map[string][]string{
 		"a field being typed in": {"tab", "a", "deploy"},

@@ -226,11 +226,9 @@ func TestTheArgRowGivesUpItsNoteBeforeItsValue(t *testing.T) {
 	}
 }
 
-// TestTheNotesAreGivenUpAsABlock pins the one thing on this screen that moved
-// when the geometry came out of the row and into the Layout. The notes are one
-// column, so they go together. Each row used to weigh its own note against its
-// own value, and a Placeholder with a short note kept it on a panel too narrow
-// for its neighbour's long one.
+// TestTheNotesAreGivenUpAsABlock pins how the arg screen gives its notes up.
+// The notes are one column, so they go together: a Placeholder with a short
+// note does not keep it on a panel too narrow for its neighbour's long one.
 func TestTheNotesAreGivenUpAsABlock(t *testing.T) {
 	s := argScreen(t, "ssh {{host=prod-1}} {{env=x}}")
 

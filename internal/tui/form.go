@@ -2,11 +2,11 @@
 // moves the keyboard between them.
 //
 // Tab is the Form's key, not a screen's. The add/edit screen and the arg screen
-// each used to carry their own copy of the ring — the same modular arithmetic,
-// the same two switch cases, the same forward-to-the-focused-field — which is
-// two places that had to agree about what Tab does for no reason either of them
-// could name. keys.go has grouped those bindings under `form` since it was
-// written; this is the thing it was naming.
+// each hold a Form rather than a ring of their own, because a ring is the same
+// modular arithmetic, the same two switch cases and the same
+// forward-to-the-focused-field wherever it is written — and two places having
+// to agree about what Tab does is one place too many. keys.go groups those
+// bindings under `form`; this is what they name.
 //
 // A Form does not render. The add/edit screen lays its Fields out in labelled
 // sections and the arg screen as gutter rows with hints, and those are
