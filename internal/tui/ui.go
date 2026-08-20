@@ -92,6 +92,11 @@ func focusStyle() lipgloss.Style { return boldStyle.Foreground(lipgloss.Color(ac
 // the detail strip, in the same off-white as the content it heads.
 func titleStyle() lipgloss.Style { return boldStyle.Foreground(lipgloss.Color(textColor)) }
 
+// hitStyle is what a fuzzy-match hit in a name is painted in: titleStyle lifted
+// to the brand's brightest gold, so the matched runes read as the same text
+// turned up rather than as separate text.
+func hitStyle() lipgloss.Style { return boldStyle.Foreground(lipgloss.Color(highlightColor)) }
+
 // brand is what the header rule is labelled with. The potato is the app's mark
 // — the same one the README and the repo lead with — and the one piece of
 // colour in the frame that is not potato's own gold, since a terminal paints an
