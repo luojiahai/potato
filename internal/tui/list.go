@@ -15,7 +15,6 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luojiahai/potato/internal/library"
 	"github.com/luojiahai/potato/internal/placeholders"
@@ -676,11 +675,13 @@ func placeholderRows(ps []placeholders.Placeholder, width int) []string {
 // The positions arrive as a map keyed by rune index, holding one entry per
 // hit. A guard here once asked `i < len(matches)` before reading it, which is
 // the length a []bool would have had: it admitted only the first len(matches)
-// runes of the name, so a query matching anywhere but the front lit nothing.
+// runes of the name and dropped every hit past them, so a query matching
+// anywhere but the front of a name lit less than all of itself — and one
+// hitting no earlier than len(matches) lit nothing at all.
 // A missing key reads false on its own; there is nothing to guard.
 func nameRuns(query, name string) []run {
-	plain := boldStyle.Foreground(lipgloss.Color(textColor))
-	hit := boldStyle.Foreground(lipgloss.Color(highlightColor))
+	plain := titleStyle()
+	hit := hitStyle()
 	matches, ok := search.NameMatchIndices(query, name)
 	if !ok {
 		return []run{{text: name, style: plain}}

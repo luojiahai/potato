@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/lipgloss/v2"
 	"github.com/luojiahai/potato/internal/search"
 )
 
@@ -129,7 +128,7 @@ func truecolorFg(hex string) string {
 // the wire at all, which it is either way because Placeholders wear it too.
 // So this walks the seam itself and asks which runes came back lit.
 func TestEveryNameMatchIsHighlighted(t *testing.T) {
-	lit := boldStyle.Foreground(lipgloss.Color(highlightColor)).GetForeground()
+	lit := hitStyle().GetForeground()
 	for _, tc := range []struct{ query, name string }{
 		{"li", "list ports"},   // hits at the front
 		{"port", "list ports"}, // hits past the number of hits
