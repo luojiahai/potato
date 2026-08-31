@@ -288,6 +288,35 @@ func TestDeleteCancelKeepsTheCommand(t *testing.T) {
 	}
 }
 
+// A Placeholder written with no default is required, so both verbs refuse an
+// empty one rather than handing the shell a command with a hole in it. An
+// argument that may be left empty is written {{name=}} and is not caught here.
+func TestTheArgFormRefusesAnEmptyRequiredArgument(t *testing.T) {
+	m, rec := harness(t)
+	press(m, []string{"tail", "enter"}) // tail logs asks for {{file}} and {{pattern=error}}
+
+	press(m, []string{"enter"})
+	if m.Handoff() != "" {
+		t.Errorf("an empty required argument was handed off: %q", m.Handoff())
+	}
+	if _, still := m.screen.(*argsScreen); !still {
+		t.Fatalf("the refusal left the arg form for %T", m.screen)
+	}
+	if frame := render(t, m); !strings.Contains(frame, "'file' is required") {
+		t.Errorf("the form does not name the argument it is waiting for:\n%s", frame)
+	}
+
+	send(m, tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl})
+	if len(rec.copied) != 0 {
+		t.Errorf("copy went ahead with an empty required argument: %v", rec.copied)
+	}
+
+	press(m, []string{"log.txt", "enter"})
+	if m.Handoff() != "tail -f log.txt | grep error" {
+		t.Errorf("handoff = %q, want the filled-in command", m.Handoff())
+	}
+}
+
 // esc is the reflexive way out of a screen, and an edited form is the one place
 // it destroys work. So it asks first, and the second press is what discards.
 func TestEscOnAnEditedFormAsksBeforeDiscarding(t *testing.T) {
