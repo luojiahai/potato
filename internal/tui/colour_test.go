@@ -2,11 +2,13 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/luojiahai/potato/internal/search"
 )
 
@@ -74,6 +76,28 @@ func TestViewCarriesTheBrandColours(t *testing.T) {
 		if !strings.Contains(frame, truecolorFg(colour)) {
 			t.Errorf("the %s colour (%s) is not on the wire", label, colour)
 		}
+	}
+}
+
+// A terminal that reports a light background gets the light palette. The answer
+// arrives as a message rather than at startup, so the swap has to reach the
+// styles the frame is already being drawn with.
+//
+// The palette is package state, so it is put back on the way out: every other
+// test here reads the dark one, and none of them says so.
+func TestALightTerminalGetsTheLightPalette(t *testing.T) {
+	t.Cleanup(func() { applyPalette(darkPalette) })
+
+	m := New(fixtureDeps())
+	m.SetSize(80, 24)
+	send(m, tea.BackgroundColorMsg{Color: color.White})
+
+	frame := m.View().Content
+	if !strings.Contains(frame, truecolorFg(lightPalette.text)) {
+		t.Errorf("the light palette's command text (%s) is not on the wire", lightPalette.text)
+	}
+	if strings.Contains(frame, truecolorFg(darkPalette.text)) {
+		t.Errorf("the dark palette's command text (%s) survived the swap", darkPalette.text)
 	}
 }
 

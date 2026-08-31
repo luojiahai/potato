@@ -103,13 +103,27 @@ func (m *Model) SetSize(width, height int) {
 	}
 }
 
-func (m *Model) Init() tea.Cmd { return nil }
+// Init asks the terminal what colour it is painted on, which is the one thing
+// potato cannot work out for itself and the only input to which palette it
+// draws in. RequestBackgroundColor is a Msg rather than a Cmd, so it is wrapped
+// in the func that yields it.
+func (m *Model) Init() tea.Cmd {
+	return func() tea.Msg { return tea.RequestBackgroundColor() }
+}
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var blink tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.SetSize(msg.Width, msg.Height)
+		return m, nil
+	case tea.BackgroundColorMsg:
+		// Only a light ground is worth acting on: potato is already dark, and a
+		// terminal that answers nothing at all leaves it there — which is the
+		// fallback, not an oversight. See applyPalette.
+		if !msg.IsDark() {
+			applyPalette(lightPalette)
+		}
 		return m, nil
 	case flashExpiredMsg:
 		// A pending timer clears whatever flash is showing, even one raised

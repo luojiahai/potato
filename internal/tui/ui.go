@@ -8,13 +8,14 @@
 // slack around it as plain unframed space, which reads as space rather than as
 // something unfinished.
 //
-// Brand golds: a dim warm brown for the rules, which are structure and should
-// recede — a full-width rule in a brighter gold shouts across the frame where a
-// box edge only outlines one; the brighter gold for controls (footer chords,
-// pointer, focus); the brightest for the things worth spotting inside a
-// command — placeholders and fuzzy-match hits. Command text is a warm
-// off-white so content reads as content rather than as a second accent
-// competing with the chrome.
+// The colours are roles rather than fixed hues. The rules are structure and
+// should recede — a full-width rule in the accent shouts across the frame where
+// a box edge only outlines one; the accent marks the controls (footer chords,
+// pointer, focus); the highlight marks the things worth spotting inside a
+// command — placeholders and fuzzy-match hits. Command text is its own quiet
+// colour so content reads as content rather than as a second accent competing
+// with the chrome. Two palettes fill those roles, one per terminal ground; see
+// palette below.
 
 package tui
 
@@ -30,29 +31,70 @@ import (
 	"github.com/luojiahai/potato/internal/version"
 )
 
-// One warm family, every colour given in truecolor — never an ANSI index,
-// which is whatever the user's terminal theme says it is and can land anywhere
-// against the golds: a cool cyan on a Nord theme, a green-ish yellow on
-// Solarized. Naming the values fixes the relationships on every terminal.
-const (
-	ruleColor      = "#5c4a2e" // hairline rules
-	accentColor    = "#ffaf5f" // controls: footer chords, pointers, focus
-	highlightColor = "#ffd75f" // placeholders and fuzzy-match hits
-	textColor      = "#e4dccf" // command text
-	mutedColor     = "#8c8478" // descriptions, hints, secondary rows
-	dangerColor    = "#d1584a" // destructive confirms and validation
-	surfaceColor   = "#3a2c14" // the selected row's fill
-	inkColor       = "#1a1208" // text on a gold fill
-)
+// palette is the eight colour roles potato paints with. Every value is given in
+// truecolor — never an ANSI index, which is whatever the user's terminal theme
+// says it is and can land anywhere against the rest: a cool cyan on a Nord
+// theme, a green-ish yellow on Solarized. Naming the values fixes the
+// relationships on every terminal.
+type palette struct {
+	rule      string // hairline rules
+	accent    string // controls: footer chords, pointers, focus
+	highlight string // placeholders and fuzzy-match hits
+	text      string // command text
+	muted     string // descriptions, hints, secondary rows
+	danger    string // destructive confirms and validation
+	surface   string // the selected row's fill
+	ink       string // text on an accent or a danger fill
+}
 
+// darkPalette is one warm family of golds and browns, for the dark ground most
+// terminals have.
+var darkPalette = palette{
+	rule:      "#5c4a2e",
+	accent:    "#ffaf5f",
+	highlight: "#ffd75f",
+	text:      "#e4dccf",
+	muted:     "#8c8478",
+	danger:    "#d1584a",
+	surface:   "#3a2c14",
+	ink:       "#1a1208",
+}
+
+// lightPalette pitches the same family for a light ground: the golds darken to
+// browns, and the fills swap ends so ink is the pale one. The invariant it is
+// chosen for is that every text role clears WCAG AA — 4.5:1 — both on white and
+// on the warm off-white a Solarized-light terminal paints, and ink clears it on
+// the accent and danger fills it is written over.
+var lightPalette = palette{
+	rule:      "#d8c8a6",
+	accent:    "#9a5300",
+	highlight: "#7d5e00",
+	text:      "#453a28",
+	muted:     "#6e6555",
+	danger:    "#b02f20",
+	surface:   "#f0e0bd",
+	ink:       "#fff8ee",
+}
+
+// The live palette and the styles derived from it. Every renderer in the
+// package reads these names; applyPalette is the only thing that writes them.
 var (
-	ruleStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color(ruleColor))
-	accentStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color(accentColor))
-	highlightStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(highlightColor))
-	textStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color(textColor))
-	dimStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color(mutedColor))
-	dangerStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color(dangerColor))
-	boldStyle      = lipgloss.NewStyle().Bold(true)
+	ruleColor      string
+	accentColor    string
+	highlightColor string
+	textColor      string
+	mutedColor     string
+	dangerColor    string
+	surfaceColor   string
+	inkColor       string
+
+	ruleStyle      lipgloss.Style
+	accentStyle    lipgloss.Style
+	highlightStyle lipgloss.Style
+	textStyle      lipgloss.Style
+	dimStyle       lipgloss.Style
+	dangerStyle    lipgloss.Style
+	flashStyle     lipgloss.Style
 	// The caret is the cell bubbles paints in the search field, built the same
 	// way it builds it: an accent foreground under `Reverse`, which lands as an
 	// accent block with the glyph in the terminal's own background colour.
@@ -65,9 +107,37 @@ var (
 	// block over a gold placeholder as over literal text. It is also the one
 	// cell in potato whose glyph colour the terminal picks — the price of the
 	// two carets being one cell.
-	caretStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(accentColor)).Inline(true).Reverse(true)
-	flashStyle = lipgloss.NewStyle().Background(lipgloss.Color(accentColor)).Foreground(lipgloss.Color(inkColor))
+	caretStyle lipgloss.Style
 )
+
+// boldStyle carries weight and no colour, so it is the one style a palette swap
+// leaves alone.
+var boldStyle = lipgloss.NewStyle().Bold(true)
+
+// potato paints dark until the terminal says otherwise. A terminal that never
+// answers the background query — and many do not — keeps this, which is the
+// right way to be wrong: a dark ground is what most of them have.
+func init() { applyPalette(darkPalette) }
+
+// applyPalette adopts a palette and rebuilds every style derived from it. The
+// styles hold their colours by value, so changing the colour names is not
+// enough — a style built before the swap would go on painting the old one.
+func applyPalette(p palette) {
+	ruleColor, accentColor, highlightColor, textColor = p.rule, p.accent, p.highlight, p.text
+	mutedColor, dangerColor, surfaceColor, inkColor = p.muted, p.danger, p.surface, p.ink
+
+	fg := func(hex string) lipgloss.Style {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(hex))
+	}
+	ruleStyle = fg(ruleColor)
+	accentStyle = fg(accentColor)
+	highlightStyle = fg(highlightColor)
+	textStyle = fg(textColor)
+	dimStyle = fg(mutedColor)
+	dangerStyle = fg(dangerColor)
+	caretStyle = fg(accentColor).Inline(true).Reverse(true)
+	flashStyle = fg(inkColor).Background(lipgloss.Color(accentColor))
+}
 
 // contentIndent is the two columns every content row is inset by, so that text
 // lands in the same column as a list row's name — the selection pointer

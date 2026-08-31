@@ -328,8 +328,10 @@ func TestATrailingColumnSitsInTheSlackRatherThanReservingIt(t *testing.T) {
 
 // surfaceFill is the SGR parameters lipgloss emits for the selection bar's
 // background. Taken from lipgloss rather than written out: the colour is
-// potato's, its encoding is not.
-var surfaceFill = func() string {
+// potato's, its encoding is not. Probed on every call, because which palette
+// potato paints in is settled by the terminal's answer rather than at package
+// initialisation, and a fill cached before that describes no colour at all.
+func surfaceFill() string {
 	probe := lipgloss.NewStyle().Background(lipgloss.Color(surfaceColor)).Render("x")
 	for _, tok := range tokenize(probe) {
 		if params, ok := sgrParams(tok); ok {
@@ -337,7 +339,7 @@ var surfaceFill = func() string {
 		}
 	}
 	return ""
-}()
+}
 
 // barHoles counts the columns of a rendered row that are not wearing the
 // selection fill.
@@ -351,11 +353,12 @@ var surfaceFill = func() string {
 // cell in its own right rather than a hole: the block is drawn, it is simply
 // drawn in the accent rather than the surface.
 func barHoles(rendered string) int {
+	fill := surfaceFill()
 	filled, reversed, holes := false, false, 0
 	for _, tok := range tokenize(rendered) {
 		if params, ok := sgrParams(tok); ok {
 			joined := strings.Join(params, ";")
-			if strings.Contains(joined, surfaceFill) {
+			if strings.Contains(joined, fill) {
 				filled = true
 			}
 			for _, p := range params {
