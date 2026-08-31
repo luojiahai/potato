@@ -162,9 +162,15 @@ func focusStyle() lipgloss.Style { return boldStyle.Foreground(lipgloss.Color(ac
 func titleStyle() lipgloss.Style { return boldStyle.Foreground(lipgloss.Color(textColor)) }
 
 // hitStyle is what a fuzzy-match hit in a name is painted in: titleStyle lifted
-// to the brand's brightest gold, so the matched runes read as the same text
+// to the highlight and underlined, so the matched runes read as the same text
 // turned up rather than as separate text.
-func hitStyle() lipgloss.Style { return boldStyle.Foreground(lipgloss.Color(highlightColor)) }
+//
+// The underline is what carries the mark rather than decorating it. A name and
+// its hits differ in hue and barely in luminance, so to a reader who cannot
+// separate the two colours the hue alone marks nothing at all.
+func hitStyle() lipgloss.Style {
+	return boldStyle.Foreground(lipgloss.Color(highlightColor)).Underline(true)
+}
 
 // brand is what the header rule is labelled with. The potato is the app's mark
 // — the same one the README and the repo lead with — and the one piece of

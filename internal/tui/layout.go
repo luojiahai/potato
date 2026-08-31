@@ -1,20 +1,20 @@
 // A Layout is the cells one line of the frame is laid out from, and the
 // candidate arrangements that fit them to a width.
 //
-// Four lines go through a Layout: a list row, an arg row, the search row and
-// the delete confirm. A Layout owns the four decisions all of them share —
-// measure the widest cell down the block, decide what to give up when the row
-// will not fit, pad what is left, and carry the selection fill through every
-// run and every pad — and no line works any of them out for itself. The fill is
-// the decision that bites: lipgloss cannot cascade a background over an
-// already-rendered escape sequence, so the fill has to go on each run as it is
-// built; a run that skips it punches a hole in the bar, and nothing short of
-// looking at the screen would tell you.
+// Three lines go through a Layout: a list row, an arg row and the search row. A
+// Layout owns the four decisions all of them share — measure the widest cell
+// down the block, decide what to give up when the row will not fit, pad what is
+// left, and carry the selection fill through every run and every pad — and no
+// line works any of them out for itself. The fill is the decision that bites:
+// lipgloss cannot cascade a background over an already-rendered escape
+// sequence, so the fill has to go on each run as it is built; a run that skips
+// it punches a hole in the bar, and nothing short of looking at the screen
+// would tell you.
 //
 // Measuring is why a Layout is handed the whole block — the set of lines sized
 // together — rather than one line at a time. A column that lines up down the
 // list has to know the widest cell in it before it can render the first. The
-// search row and the confirm are blocks of one.
+// search row is a block of one.
 //
 // Giving up is a list of whole arrangements rather than a set of per-column
 // priorities, because two of the three that degrade do not merely drop a column
@@ -254,8 +254,7 @@ type blockRow struct {
 	cells []cell
 	// selected fills the row's whole width — every run and every pad. It is a
 	// flag rather than a style because the fill is one colour: what varies is
-	// the run underneath, which the caller styles. The delete confirm is the
-	// proof — one danger-red run on the same bar every selected row wears.
+	// the run underneath, which the caller styles.
 	selected bool
 }
 

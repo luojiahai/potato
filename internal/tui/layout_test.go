@@ -326,13 +326,13 @@ func TestATrailingColumnSitsInTheSlackRatherThanReservingIt(t *testing.T) {
 
 // ---------- the fill ----------
 
-// surfaceFill is the SGR parameters lipgloss emits for the selection bar's
-// background. Taken from lipgloss rather than written out: the colour is
-// potato's, its encoding is not. Probed on every call, because which palette
-// potato paints in is settled by the terminal's answer rather than at package
-// initialisation, and a fill cached before that describes no colour at all.
-func surfaceFill() string {
-	probe := lipgloss.NewStyle().Background(lipgloss.Color(surfaceColor)).Render("x")
+// fillParams is the SGR parameters lipgloss emits for a background colour.
+// Taken from lipgloss rather than written out: the colour is potato's, its
+// encoding is not. Probed on every call, because which palette potato paints in
+// is settled by the terminal's answer rather than at package initialisation,
+// and a fill cached before that describes no colour at all.
+func fillParams(hex string) string {
+	probe := lipgloss.NewStyle().Background(lipgloss.Color(hex)).Render("x")
 	for _, tok := range tokenize(probe) {
 		if params, ok := sgrParams(tok); ok {
 			return strings.Join(params, ";")
@@ -341,8 +341,8 @@ func surfaceFill() string {
 	return ""
 }
 
-// barHoles counts the columns of a rendered row that are not wearing the
-// selection fill.
+// barHoles counts the columns of a rendered row that are not wearing the given
+// fill.
 //
 // This is the one thing the golden frames cannot check. lipgloss cannot cascade
 // a background over an escape sequence that has already been emitted, so the
@@ -351,9 +351,8 @@ func surfaceFill() string {
 //
 // A reverse-video cell counts as painted. It is a caret, which is a painted
 // cell in its own right rather than a hole: the block is drawn, it is simply
-// drawn in the accent rather than the surface.
-func barHoles(rendered string) int {
-	fill := surfaceFill()
+// drawn in the accent rather than the fill.
+func barHoles(rendered, fill string) int {
 	filled, reversed, holes := false, false, 0
 	for _, tok := range tokenize(rendered) {
 		if params, ok := sgrParams(tok); ok {
@@ -388,7 +387,7 @@ func barHoles(rendered string) int {
 func TestTheSelectionBarHasNoHoles(t *testing.T) {
 	for _, width := range []int{80, 60, 52, 51, 40, 26, 25, 20} {
 		row := listRow(width, listCells(), true)
-		if holes := barHoles(row); holes > 0 {
+		if holes := barHoles(row, fillParams(surfaceColor)); holes > 0 {
 			t.Errorf("width %d: %d columns of the bar are unfilled\n%q", width, holes, row)
 		}
 	}
@@ -404,18 +403,18 @@ func TestTheFocusedArgRowWearsTheSameBar(t *testing.T) {
 	s := argScreen(t, argTemplate)
 	for _, width := range []int{80, 60, 40, argNoteGoesBelow, argNoteGoesBelow - 1, 20, 12} {
 		row := s.rows(width, true)[0] // the Form starts focused on the first Field
-		if holes := barHoles(row); holes > 0 {
+		if holes := barHoles(row, fillParams(surfaceColor)); holes > 0 {
 			t.Errorf("width %d: %d columns of the bar are unfilled\n%q", width, holes, row)
 		}
 	}
 }
 
-// TestTheConfirmWearsTheSameBar — the delete confirm is one danger-red run
-// across the whole row, and it is filled the same way every selected row is
-// rather than painting a bar of its own.
-func TestTheConfirmWearsTheSameBar(t *testing.T) {
+// TestTheConfirmIsAnUnbrokenDangerBar — the delete confirm is ink on the danger
+// fill, one run across the row it takes over, so the row you have to read is
+// the most legible one on the screen rather than the least.
+func TestTheConfirmIsAnUnbrokenDangerBar(t *testing.T) {
 	row := confirmRow(60, "deploy prod")
-	if holes := barHoles(row); holes > 0 {
+	if holes := barHoles(row, fillParams(dangerColor)); holes > 0 {
 		t.Errorf("%d columns of the confirm's bar are unfilled\n%q", holes, row)
 	}
 	if !strings.Contains(ansi.Strip(row), "Delete 'deploy prod'?") {
