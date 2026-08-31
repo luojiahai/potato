@@ -39,8 +39,11 @@ type Deps struct {
 	Now         func() time.Time
 }
 
-// screen is one of potato's four surfaces. Each is constructed fresh on
-// transition, which is what resets its query, focus and field values.
+// screen is one of potato's four surfaces. The edit and arg screens are built
+// fresh for the Command they were opened on, which is what makes their fields
+// start from it, and each holds the screen that opened it: cancelling or
+// finishing hands the keyboard back to that screen rather than to a new one, so
+// the list you came from keeps its query, its selection and its focus.
 type screen interface {
 	update(m *Model, msg tea.Msg) tea.Cmd
 	view(m *Model) []string

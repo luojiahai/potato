@@ -194,7 +194,7 @@ func argScreen(t *testing.T, template string) *argsScreen {
 	t.Helper()
 	m := New(fixtureDeps())
 	m.SetSize(80, 24)
-	return newArgsScreen(m, &library.Command{
+	return newArgsScreen(m, m.screen, &library.Command{
 		ID: "layout-test", Name: "fixture", Template: template,
 	})
 }

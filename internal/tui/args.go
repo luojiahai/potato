@@ -19,6 +19,9 @@ type argsScreen struct {
 	ps       []placeholders.Placeholder
 	lastArgs map[string]string
 	form     form
+	// back is the screen this one was opened from, and where esc leads. Held
+	// rather than rebuilt so the list is found as it was left.
+	back screen
 }
 
 // argPaint carries the selection fill across a focused row's value — the same
@@ -28,7 +31,7 @@ func argPaint(value string, focused bool) []run {
 	return []run{{text: value, style: onSelected(textStyle, focused)}}
 }
 
-func newArgsScreen(m *Model, command *library.Command) *argsScreen {
+func newArgsScreen(m *Model, back screen, command *library.Command) *argsScreen {
 	ps := placeholders.Parse(command.Template)
 	s := &argsScreen{
 		id:       command.ID,
@@ -36,6 +39,7 @@ func newArgsScreen(m *Model, command *library.Command) *argsScreen {
 		command:  command.Template,
 		ps:       ps,
 		lastArgs: m.st[command.ID].Args,
+		back:     back,
 	}
 	fields := make([]field, 0, len(ps))
 	for _, p := range ps {
@@ -67,7 +71,7 @@ func (s *argsScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch {
 		case key.Matches(keyMsg, keymap.args.Back):
-			m.screen = newListScreen()
+			m.screen = s.back
 			return nil
 		case key.Matches(keyMsg, keymap.args.Run):
 			return m.run(s.id, s.values())

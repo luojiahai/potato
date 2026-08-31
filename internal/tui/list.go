@@ -89,11 +89,11 @@ func (s *listScreen) handleKey(m *Model, msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, keymap.list.Copy):
 		return s.copy(m)
 	case key.Matches(msg, keymap.list.Add):
-		m.screen = newEditScreen(m, nil)
+		m.screen = newEditScreen(m, s, nil)
 		return nil
 	case key.Matches(msg, keymap.list.Edit):
 		if selected := s.selected(m); selected != nil {
-			m.screen = newEditScreen(m, selected)
+			m.screen = newEditScreen(m, s, selected)
 		}
 		return nil
 	case key.Matches(msg, keymap.list.Delete):
@@ -129,7 +129,7 @@ func (s *listScreen) run(m *Model) tea.Cmd {
 		return nil
 	}
 	if len(placeholders.Parse(selected.Template)) > 0 {
-		m.screen = newArgsScreen(m, selected)
+		m.screen = newArgsScreen(m, s, selected)
 		return nil
 	}
 	return m.run(selected.ID, map[string]string{})
@@ -141,7 +141,7 @@ func (s *listScreen) copy(m *Model) tea.Cmd {
 		return nil
 	}
 	if len(placeholders.Parse(selected.Template)) > 0 {
-		m.screen = newArgsScreen(m, selected)
+		m.screen = newArgsScreen(m, s, selected)
 		return m.flashDefault("Needs args — fill in, then " + keymap.args.Copy.Help().Key)
 	}
 	return m.copy(selected.ID, map[string]string{})

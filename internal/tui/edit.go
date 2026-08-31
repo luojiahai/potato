@@ -41,7 +41,10 @@ var editLabels = [fieldCount]string{
 const commandHint = "Type a command — {{name}} or {{name=default}} become args"
 
 type editScreen struct {
-	id   string // "" = a new Command
+	id string // "" = a new Command
+	// back is the screen this one was opened from, and the one both ways out of
+	// it lead to. Held rather than rebuilt so the list is found as it was left.
+	back screen
 	form form
 	// tried records a save that was refused. Until then the form stays quiet
 	// about the fields it is still waiting for — a brand-new Command is empty
@@ -49,8 +52,8 @@ type editScreen struct {
 	tried bool
 }
 
-func newEditScreen(m *Model, command *library.Command) *editScreen {
-	s := &editScreen{}
+func newEditScreen(m *Model, back screen, command *library.Command) *editScreen {
+	s := &editScreen{back: back}
 	var values [fieldCount]string
 	if command != nil {
 		s.id = command.ID
@@ -115,7 +118,7 @@ func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch {
 		case key.Matches(keyMsg, keymap.edit.Cancel):
-			m.screen = newListScreen()
+			m.screen = s.back
 			return nil
 		case key.Matches(keyMsg, keymap.edit.Save):
 			if s.problem(m) != "" {
@@ -131,8 +134,8 @@ func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	return s.form.Update(msg)
 }
 
-// save hands the form's fields to the Library and goes back to the list. The
-// trimming, the id, the slot and the empty-description rule are all the
+// save hands the form's fields to the Library and goes back where it came from.
+// The trimming, the id, the slot and the empty-description rule are all the
 // Library's — this knows only which of the two verbs it is performing.
 func (s *editScreen) save(m *Model) tea.Cmd {
 	draft := library.Draft{
@@ -161,7 +164,7 @@ func (s *editScreen) save(m *Model) tea.Cmd {
 	}
 
 	saved := m.updateLibrary(next)
-	m.screen = newListScreen()
+	m.screen = s.back
 	return m.finish(verb, saved)
 }
 

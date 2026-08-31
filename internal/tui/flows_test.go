@@ -288,6 +288,38 @@ func TestDeleteCancelKeepsTheCommand(t *testing.T) {
 	}
 }
 
+// The list is where the user was, so a trip to a form and back has to return
+// them to it rather than to a fresh one — a query retyped and a selection walked
+// down again is the whole search done twice.
+func TestAFormRoundTripKeepsTheQueryAndSelection(t *testing.T) {
+	for name, trip := range map[string][]string{
+		"the edit form": {"ctrl+o", "esc"},
+		"the add form":  {"ctrl+n", "esc"},
+		"the arg form":  {"enter", "esc"},
+	} {
+		m, _ := harness(t)
+		press(m, []string{"o", "down"})
+		before := m.screen.(*listScreen)
+
+		press(m, trip)
+
+		after, ok := m.screen.(*listScreen)
+		if !ok {
+			t.Errorf("%s: came back to %T, want the list", name, m.screen)
+			continue
+		}
+		if after != before {
+			t.Errorf("%s: came back to a different list screen", name)
+		}
+		if after.query.Value() != "o" {
+			t.Errorf("%s: the query came back as %q", name, after.query.Value())
+		}
+		if after.sel != 1 {
+			t.Errorf("%s: the selection came back as %d, want 1", name, after.sel)
+		}
+	}
+}
+
 func TestTypingFiltersTheList(t *testing.T) {
 	m, _ := harness(t)
 	press(m, []string{"ports"})
