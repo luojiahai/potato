@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -99,6 +100,67 @@ func TestALightTerminalGetsTheLightPalette(t *testing.T) {
 	if strings.Contains(frame, truecolorFg(darkPalette.text)) {
 		t.Errorf("the dark palette's command text (%s) survived the swap", darkPalette.text)
 	}
+}
+
+// The light palette earns its values by being legible on a light terminal, and
+// the two claims to that effect are worth more as arithmetic than as prose: a
+// hex nudged by a shade takes the contrast with it and the frame goes on
+// rendering, so nothing but this would notice.
+//
+// The grounds are the ones a light terminal paints: plain white, and the warm
+// off-white of Solarized light. rule is absent because a hairline is structure
+// rather than text, and the ratio AA asks for does not govern it.
+func TestEveryLightTextRoleClearsAAOnALightGround(t *testing.T) {
+	for _, ground := range []string{"#ffffff", "#fdf6e3"} {
+		for role, hex := range map[string]string{
+			"accent":    lightPalette.accent,
+			"highlight": lightPalette.highlight,
+			"text":      lightPalette.text,
+			"muted":     lightPalette.muted,
+			"danger":    lightPalette.danger,
+		} {
+			if got := contrast(hex, ground); got < wcagAA {
+				t.Errorf("%s (%s) on %s is %.2f:1, want %.1f:1",
+					role, hex, ground, got, wcagAA)
+			}
+		}
+	}
+}
+
+// Ink is the one colour written over a fill of potato's own rather than over
+// the terminal's ground, and the delete confirm is the row that rests on it.
+func TestInkClearsAAOnTheFillsItIsWrittenOver(t *testing.T) {
+	for name, p := range map[string]palette{"dark": darkPalette, "light": lightPalette} {
+		for fill, hex := range map[string]string{"accent": p.accent, "danger": p.danger} {
+			if got := contrast(p.ink, hex); got < wcagAA {
+				t.Errorf("%s: ink on %s is %.2f:1, want %.1f:1", name, fill, got, wcagAA)
+			}
+		}
+	}
+}
+
+// wcagAA is the ratio WCAG 2.x asks of body text against what it sits on.
+const wcagAA = 4.5
+
+func contrast(a, b string) float64 {
+	high, low := luminance(a), luminance(b)
+	if high < low {
+		high, low = low, high
+	}
+	return (high + 0.05) / (low + 0.05)
+}
+
+func luminance(hex string) float64 {
+	var r, g, b int
+	fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
+	channel := func(v int) float64 {
+		c := float64(v) / 255
+		if c <= 0.04045 {
+			return c / 12.92
+		}
+		return math.Pow((c+0.055)/1.055, 2.4)
+	}
+	return 0.2126*channel(r) + 0.7152*channel(g) + 0.0722*channel(b)
 }
 
 // Every colour potato draws has to be one it chose. An ANSI palette index is

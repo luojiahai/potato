@@ -268,9 +268,10 @@ func indent(rows []string) []string {
 // while you type, in a terminal that would otherwise reflow under it on every
 // keystroke.
 //
-// The status line — the edit screen's validation warning — keeps its rows when
-// the two blocks together will not fit. The top block is the one that gives,
-// since it is the one with somewhere to scroll.
+// The status line — whatever a screen pins against the footer, a refusal or a
+// warning about the key being held — keeps its rows when the two blocks
+// together will not fit. The top block is the one that gives, since it is the
+// one with somewhere to scroll.
 func pin(top, bottom []string, height int) []string {
 	if height <= 0 {
 		return nil

@@ -109,10 +109,10 @@ func (m *Model) SetSize(width, height int) {
 	}
 }
 
-// Init asks the terminal what colour it is painted on, which is the one thing
-// potato cannot work out for itself and the only input to which palette it
-// draws in. RequestBackgroundColor is a Msg rather than a Cmd, so it is wrapped
-// in the func that yields it.
+// Init asks the terminal what colour it is painted on. That answer is the only
+// input to which palette potato draws in, and the one thing about the frame it
+// cannot work out for itself. A terminal that never answers keeps the dark
+// palette — see applyPalette.
 func (m *Model) Init() tea.Cmd {
 	return func() tea.Msg { return tea.RequestBackgroundColor() }
 }

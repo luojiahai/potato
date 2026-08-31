@@ -552,13 +552,13 @@ func pointerCell(selected bool) cell {
 // confirmRow is the delete confirm in a Command's place: one bold run of ink on
 // the danger fill, in the row the Command was drawn in.
 //
-// The destructive prompt is the one row that has to be read, so it is the most
-// legible row potato draws: ink on danger clears 4.5:1 in either palette, which
-// danger on the selection fill does not. It is rendered rather than laid out —
-// a block of one row with a single flex cell is a Layout with nothing to
-// decide — and it ends at its text rather than running to the frame's edge,
-// since the trim every row goes through takes trailing padding whether or not
-// it is painted (see trimRightVisible).
+// The destructive prompt is the one row that has to be read before it is
+// answered, so it is drawn in the most legible pair potato has: ink on danger
+// clears WCAG AA in both palettes. It is rendered rather than laid out — a
+// block of one row with a single flex cell is a Layout with nothing to decide —
+// and it ends at its text rather than running to the frame's edge, since the
+// trim every row goes through takes trailing padding whether or not it is
+// painted (see trimRightVisible).
 func confirmRow(width int, name string) string {
 	text := ansi.Truncate(fmt.Sprintf("⚠ Delete '%s'? y/n", name), max(0, width), "…")
 	return boldStyle.

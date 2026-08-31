@@ -87,16 +87,19 @@ func newEditScreen(m *Model, back screen, command *library.Command) *editScreen 
 
 func (s *editScreen) value(i int) string { return s.form.Field(i).Value() }
 
+// values is every field at once, so a caller can compare the whole form against
+// another snapshot of it in one expression.
+func (s *editScreen) values() [fieldCount]string {
+	var out [fieldCount]string
+	for i := range out {
+		out[i] = s.value(i)
+	}
+	return out
+}
+
 // dirty reports whether any field has moved off what the screen opened with —
 // which is the whole of what the esc guard in update is protecting.
-func (s *editScreen) dirty() bool {
-	for i, was := range s.initial {
-		if s.value(i) != was {
-			return true
-		}
-	}
-	return false
-}
+func (s *editScreen) dirty() bool { return s.values() != s.initial }
 
 // collision is the warning for a name another Command already holds, or "". It
 // is the one problem worth saying before a save is even attempted — the user
@@ -159,7 +162,17 @@ func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 			return s.save(m)
 		}
 	}
-	return s.form.Update(msg)
+
+	before := s.values()
+	cmd := s.form.Update(msg)
+	// An edit spends the armed esc whatever message carried it. A paste is not a
+	// keystroke and arrives as one message of its own, so a guard that watched
+	// only the keyboard would let the next esc throw away text nothing had
+	// warned about.
+	if s.values() != before {
+		s.discardArmed = false
+	}
+	return cmd
 }
 
 // save hands the form's fields to the Library and goes back where it came from.

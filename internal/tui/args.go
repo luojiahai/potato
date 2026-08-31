@@ -182,21 +182,18 @@ func argColumns(withNote bool) arrangement {
 // Field's own painter (see argPaint and cell).
 func (s *argsScreen) rows(width int, on bool) []string {
 	block := make([]blockRow, 0, len(s.ps))
-	withNote := false
 	for i, p := range s.ps {
-		note := s.note(p)
-		if note != "" {
-			withNote = true
-		}
 		cells := make([]cell, 4)
 		cells[argIndent] = cell{} // nothing to draw; the fill runs through it
 		cells[argLabel] = textCell(p.Name, dimStyle)
 		cells[argValue] = fieldCell(s.form.Field(i), on)
-		cells[argNote] = textCell(note, dimStyle)
+		cells[argNote] = textCell(s.note(p), dimStyle)
 		block = append(block, blockRow{cells: cells, selected: i == s.form.Focused()})
 	}
+	// Every Placeholder has a note, so the first candidate always has one to
+	// carry and the second is what a panel too narrow for the column falls to.
 	return layout(width,
-		candidate{columns: argColumns(withNote), rows: block},
+		candidate{columns: argColumns(true), rows: block},
 		candidate{columns: argColumns(false), rows: block},
 	)
 }

@@ -371,6 +371,20 @@ func TestAKeystrokeDisarmsTheDiscardGuard(t *testing.T) {
 	}
 }
 
+// A paste changes the form as surely as typing does, and it arrives as its own
+// message rather than as keystrokes. The guard has to see it, or an esc after a
+// paste discards text the user was never warned about.
+func TestAPasteDisarmsTheDiscardGuard(t *testing.T) {
+	m, _ := harness(t)
+	press(m, []string{"ctrl+o", "ctrl+u", "renamed", "esc"})
+	send(m, tea.PasteMsg{Content: "-pasted"})
+	press(m, []string{"esc"})
+
+	if _, still := m.screen.(*editScreen); !still {
+		t.Fatalf("an esc after a paste discarded the edit for %T", m.screen)
+	}
+}
+
 // The list is where the user was, so a trip to a form and back has to return
 // them to it rather than to a fresh one — a query retyped and a selection walked
 // down again is the whole search done twice.
