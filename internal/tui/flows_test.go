@@ -288,6 +288,37 @@ func TestDeleteCancelKeepsTheCommand(t *testing.T) {
 	}
 }
 
+// esc is the reflexive way out of a screen, and an edited form is the one place
+// it destroys work. So it asks first, and the second press is what discards.
+func TestEscOnAnEditedFormAsksBeforeDiscarding(t *testing.T) {
+	m, _ := harness(t)
+	press(m, []string{"ctrl+o", "ctrl+u", "renamed"})
+
+	press(m, []string{"esc"})
+	if _, still := m.screen.(*editScreen); !still {
+		t.Fatalf("the first esc threw the edit away for %T", m.screen)
+	}
+	if frame := render(t, m); !strings.Contains(frame, "esc again to discard") {
+		t.Errorf("the form does not say why it stayed:\n%s", frame)
+	}
+
+	press(m, []string{"esc"})
+	if _, ok := m.screen.(*listScreen); !ok {
+		t.Errorf("the second esc landed on %T, want the list", m.screen)
+	}
+}
+
+// The armed esc lasts one keystroke. Carrying on typing means the way out was
+// not what the user was reaching for, and an esc minutes later is a fresh ask.
+func TestAKeystrokeDisarmsTheDiscardGuard(t *testing.T) {
+	m, _ := harness(t)
+	press(m, []string{"ctrl+o", "ctrl+u", "renamed", "esc", "x", "esc"})
+
+	if _, still := m.screen.(*editScreen); !still {
+		t.Fatalf("an esc after a keystroke discarded the edit for %T", m.screen)
+	}
+}
+
 // The list is where the user was, so a trip to a form and back has to return
 // them to it rather than to a fresh one — a query retyped and a selection walked
 // down again is the whole search done twice.
