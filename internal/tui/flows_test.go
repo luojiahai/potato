@@ -41,7 +41,12 @@ func harness(t *testing.T) (*Model, *recorder) {
 		}
 		return rec.failWith
 	}
-	deps.Copy = func(text string) { rec.copied = append(rec.copied, text) }
+	// true stands in for a native clipboard tool that took the text, which is the
+	// path the "Copied to clipboard" assertions are about.
+	deps.Copy = func(text string) bool {
+		rec.copied = append(rec.copied, text)
+		return true
+	}
 	m := New(deps)
 	m.SetSize(80, 24)
 	return m, rec
@@ -108,6 +113,24 @@ func TestCtrlYCopiesWithoutHandingOff(t *testing.T) {
 	}
 	if !strings.Contains(render(t, m), "Copied to clipboard") {
 		t.Error("no flash after copying")
+	}
+}
+
+// With no native tool, all that ran is a sequence the terminal never answers.
+// The flash says that rather than promising a clipboard nobody checked — the
+// user who trusts it pastes whatever was there before.
+func TestCopyWithoutANativeToolSaysWhatItActuallyDid(t *testing.T) {
+	m, _ := harness(t)
+	m.deps.Copy = func(string) bool { return false }
+	press(m, []string{"ports"})
+	send(m, tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl})
+
+	frame := render(t, m)
+	if strings.Contains(frame, "Copied to clipboard") {
+		t.Errorf("a copy potato could not confirm claimed the clipboard:\n%s", frame)
+	}
+	if !strings.Contains(frame, "OSC 52") {
+		t.Errorf("the flash does not say what actually happened:\n%s", frame)
 	}
 }
 
@@ -285,6 +308,112 @@ func TestDeleteCancelKeepsTheCommand(t *testing.T) {
 	press(m, []string{"ctrl+x", "n"})
 	if len(rec.libraries) != 0 {
 		t.Error("cancelling still wrote the Library")
+	}
+}
+
+// A Placeholder written with no default is required, so both verbs refuse an
+// empty one rather than handing the shell a command with a hole in it. An
+// argument that may be left empty is written {{name=}} and is not caught here.
+func TestTheArgFormRefusesAnEmptyRequiredArgument(t *testing.T) {
+	m, rec := harness(t)
+	press(m, []string{"tail", "enter"}) // tail logs asks for {{file}} and {{pattern=error}}
+
+	press(m, []string{"enter"})
+	if m.Handoff() != "" {
+		t.Errorf("an empty required argument was handed off: %q", m.Handoff())
+	}
+	if _, still := m.screen.(*argsScreen); !still {
+		t.Fatalf("the refusal left the arg form for %T", m.screen)
+	}
+	if frame := render(t, m); !strings.Contains(frame, "'file' is required") {
+		t.Errorf("the form does not name the argument it is waiting for:\n%s", frame)
+	}
+
+	send(m, tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl})
+	if len(rec.copied) != 0 {
+		t.Errorf("copy went ahead with an empty required argument: %v", rec.copied)
+	}
+
+	press(m, []string{"log.txt", "enter"})
+	if m.Handoff() != "tail -f log.txt | grep error" {
+		t.Errorf("handoff = %q, want the filled-in command", m.Handoff())
+	}
+}
+
+// esc is the reflexive way out of a screen, and an edited form is the one place
+// it destroys work. So it asks first, and the second press is what discards.
+func TestEscOnAnEditedFormAsksBeforeDiscarding(t *testing.T) {
+	m, _ := harness(t)
+	press(m, []string{"ctrl+o", "ctrl+u", "renamed"})
+
+	press(m, []string{"esc"})
+	if _, still := m.screen.(*editScreen); !still {
+		t.Fatalf("the first esc threw the edit away for %T", m.screen)
+	}
+	if frame := render(t, m); !strings.Contains(frame, "esc again to discard") {
+		t.Errorf("the form does not say why it stayed:\n%s", frame)
+	}
+
+	press(m, []string{"esc"})
+	if _, ok := m.screen.(*listScreen); !ok {
+		t.Errorf("the second esc landed on %T, want the list", m.screen)
+	}
+}
+
+// The armed esc lasts one keystroke. Carrying on typing means the way out was
+// not what the user was reaching for, and an esc minutes later is a fresh ask.
+func TestAKeystrokeDisarmsTheDiscardGuard(t *testing.T) {
+	m, _ := harness(t)
+	press(m, []string{"ctrl+o", "ctrl+u", "renamed", "esc", "x", "esc"})
+
+	if _, still := m.screen.(*editScreen); !still {
+		t.Fatalf("an esc after a keystroke discarded the edit for %T", m.screen)
+	}
+}
+
+// A paste changes the form as surely as typing does, and it arrives as its own
+// message rather than as keystrokes. The guard has to see it, or an esc after a
+// paste discards text the user was never warned about.
+func TestAPasteDisarmsTheDiscardGuard(t *testing.T) {
+	m, _ := harness(t)
+	press(m, []string{"ctrl+o", "ctrl+u", "renamed", "esc"})
+	send(m, tea.PasteMsg{Content: "-pasted"})
+	press(m, []string{"esc"})
+
+	if _, still := m.screen.(*editScreen); !still {
+		t.Fatalf("an esc after a paste discarded the edit for %T", m.screen)
+	}
+}
+
+// The list is where the user was, so a trip to a form and back has to return
+// them to it rather than to a fresh one — a query retyped and a selection walked
+// down again is the whole search done twice.
+func TestAFormRoundTripKeepsTheQueryAndSelection(t *testing.T) {
+	for name, trip := range map[string][]string{
+		"the edit form": {"ctrl+o", "esc"},
+		"the add form":  {"ctrl+n", "esc"},
+		"the arg form":  {"enter", "esc"},
+	} {
+		m, _ := harness(t)
+		press(m, []string{"o", "down"})
+		before := m.screen.(*listScreen)
+
+		press(m, trip)
+
+		after, ok := m.screen.(*listScreen)
+		if !ok {
+			t.Errorf("%s: came back to %T, want the list", name, m.screen)
+			continue
+		}
+		if after != before {
+			t.Errorf("%s: came back to a different list screen", name)
+		}
+		if after.query.Value() != "o" {
+			t.Errorf("%s: the query came back as %q", name, after.query.Value())
+		}
+		if after.sel != 1 {
+			t.Errorf("%s: the selection came back as %d, want 1", name, after.sel)
+		}
 	}
 }
 

@@ -41,16 +41,24 @@ var editLabels = [fieldCount]string{
 const commandHint = "Type a command — {{name}} or {{name=default}} become args"
 
 type editScreen struct {
-	id   string // "" = a new Command
+	id string // "" = a new Command
+	// back is the screen this one was opened from, and the one both ways out of
+	// it lead to. Held rather than rebuilt so the list is found as it was left.
+	back screen
 	form form
+	// initial is what the fields were opened with, which is what makes an edit
+	// distinguishable from a form that has only been looked at.
+	initial [fieldCount]string
 	// tried records a save that was refused. Until then the form stays quiet
 	// about the fields it is still waiting for — a brand-new Command is empty
 	// by definition, and greeting it with "name is required" is noise.
 	tried bool
+	// discardArmed is an esc waiting for its second press. See update.
+	discardArmed bool
 }
 
-func newEditScreen(m *Model, command *library.Command) *editScreen {
-	s := &editScreen{}
+func newEditScreen(m *Model, back screen, command *library.Command) *editScreen {
+	s := &editScreen{back: back}
 	var values [fieldCount]string
 	if command != nil {
 		s.id = command.ID
@@ -60,6 +68,7 @@ func newEditScreen(m *Model, command *library.Command) *editScreen {
 			values[fieldDescription] = *command.Description
 		}
 	}
+	s.initial = values
 	fields := make([]field, 0, fieldCount)
 	for i, value := range values {
 		f := newField(wrapMode)
@@ -77,6 +86,20 @@ func newEditScreen(m *Model, command *library.Command) *editScreen {
 }
 
 func (s *editScreen) value(i int) string { return s.form.Field(i).Value() }
+
+// values is every field at once, so a caller can compare the whole form against
+// another snapshot of it in one expression.
+func (s *editScreen) values() [fieldCount]string {
+	var out [fieldCount]string
+	for i := range out {
+		out[i] = s.value(i)
+	}
+	return out
+}
+
+// dirty reports whether any field has moved off what the screen opened with —
+// which is the whole of what the esc guard in update is protecting.
+func (s *editScreen) dirty() bool { return s.values() != s.initial }
 
 // collision is the warning for a name another Command already holds, or "". It
 // is the one problem worth saying before a save is even attempted — the user
@@ -113,11 +136,22 @@ func (s *editScreen) problem(m *Model) string {
 // Form's.
 func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
-		switch {
-		case key.Matches(keyMsg, keymap.edit.Cancel):
-			m.screen = newListScreen()
+		// esc is the reflexive way out of anything, and a form with edits in it
+		// is the one place that reflex destroys work. So a dirty form spends the
+		// first esc saying what it is about to lose and leaves on the second; a
+		// form nothing has been typed into has nothing to lose and goes at once.
+		if key.Matches(keyMsg, keymap.edit.Cancel) {
+			if s.dirty() && !s.discardArmed {
+				s.discardArmed = true
+				return nil
+			}
+			m.screen = s.back
 			return nil
-		case key.Matches(keyMsg, keymap.edit.Save):
+		}
+		// Any other keystroke is the user carrying on with the form, so the armed
+		// esc is spent rather than left lying in wait several keys later.
+		s.discardArmed = false
+		if key.Matches(keyMsg, keymap.edit.Save) {
 			if s.problem(m) != "" {
 				// No flash: the inline warning says the same thing and stays put
 				// until the problem is fixed, where a toast would expire while the
@@ -128,11 +162,21 @@ func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 			return s.save(m)
 		}
 	}
-	return s.form.Update(msg)
+
+	before := s.values()
+	cmd := s.form.Update(msg)
+	// An edit spends the armed esc whatever message carried it. A paste is not a
+	// keystroke and arrives as one message of its own, so a guard that watched
+	// only the keyboard would let the next esc throw away text nothing had
+	// warned about.
+	if s.values() != before {
+		s.discardArmed = false
+	}
+	return cmd
 }
 
-// save hands the form's fields to the Library and goes back to the list. The
-// trimming, the id, the slot and the empty-description rule are all the
+// save hands the form's fields to the Library and goes back where it came from.
+// The trimming, the id, the slot and the empty-description rule are all the
 // Library's — this knows only which of the two verbs it is performing.
 func (s *editScreen) save(m *Model) tea.Cmd {
 	draft := library.Draft{
@@ -161,7 +205,7 @@ func (s *editScreen) save(m *Model) tea.Cmd {
 	}
 
 	saved := m.updateLibrary(next)
-	m.screen = newListScreen()
+	m.screen = s.back
 	return m.finish(verb, saved)
 }
 
@@ -186,6 +230,11 @@ func (s *editScreen) view(m *Model) []string {
 	warning := s.collision(m)
 	if warning == "" && s.tried {
 		warning = s.problem(m)
+	}
+	// An armed esc outranks both. It is the only warning here about the key the
+	// user is holding rather than about the form, and it is gone next keystroke.
+	if s.discardArmed {
+		warning = "Unsaved changes — esc again to discard"
 	}
 	var bottom []string
 	if warning != "" {

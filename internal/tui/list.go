@@ -12,9 +12,11 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luojiahai/potato/internal/library"
 	"github.com/luojiahai/potato/internal/placeholders"
@@ -88,11 +90,11 @@ func (s *listScreen) handleKey(m *Model, msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, keymap.list.Copy):
 		return s.copy(m)
 	case key.Matches(msg, keymap.list.Add):
-		m.screen = newEditScreen(m, nil)
+		m.screen = newEditScreen(m, s, nil)
 		return nil
 	case key.Matches(msg, keymap.list.Edit):
 		if selected := s.selected(m); selected != nil {
-			m.screen = newEditScreen(m, selected)
+			m.screen = newEditScreen(m, s, selected)
 		}
 		return nil
 	case key.Matches(msg, keymap.list.Delete):
@@ -128,7 +130,7 @@ func (s *listScreen) run(m *Model) tea.Cmd {
 		return nil
 	}
 	if len(placeholders.Parse(selected.Template)) > 0 {
-		m.screen = newArgsScreen(m, selected)
+		m.screen = newArgsScreen(m, s, selected)
 		return nil
 	}
 	return m.run(selected.ID, map[string]string{})
@@ -140,8 +142,12 @@ func (s *listScreen) copy(m *Model) tea.Cmd {
 		return nil
 	}
 	if len(placeholders.Parse(selected.Template)) > 0 {
-		m.screen = newArgsScreen(m, selected)
-		return m.flashDefault("Needs args — fill in, then " + keymap.args.Copy.Help().Key)
+		m.screen = newArgsScreen(m, s, selected)
+		// Guidance, not a confirmation, so it holds for less than flashDefault:
+		// the flash sits in the footer's key row, and this is the one screen
+		// whose keys the user was just diverted to needing.
+		return m.setFlash("Needs args — fill in, then "+keymap.args.Copy.Help().Key,
+			1500*time.Millisecond)
 	}
 	return m.copy(selected.ID, map[string]string{})
 }
@@ -548,19 +554,22 @@ func pointerCell(selected bool) cell {
 	return textCell(pointer, accentStyle)
 }
 
-// confirmRow is the delete confirm in a Command's place: one run across the
-// whole row, on the same bar every selected row wears.
+// confirmRow is the delete confirm in a Command's place: one bold run of ink on
+// the danger fill, in the row the Command was drawn in.
+//
+// The destructive prompt is the one row that has to be read before it is
+// answered, so it is drawn in the most legible pair potato has: ink on danger
+// clears WCAG AA in both palettes. It is rendered rather than laid out — a
+// block of one row with a single flex cell is a Layout with nothing to decide —
+// and it ends at its text rather than running to the frame's edge, since the
+// trim every row goes through takes trailing padding whether or not it is
+// painted (see trimRightVisible).
 func confirmRow(width int, name string) string {
-	return layout(width, candidate{
-		columns: arrangement{{spend: spendFlex}},
-		rows: []blockRow{{
-			selected: true,
-			cells: []cell{textCell(
-				fmt.Sprintf("⚠ Delete '%s'? y/n", name),
-				dangerStyle.Bold(true),
-			)},
-		}},
-	})[0]
+	text := ansi.Truncate(fmt.Sprintf("⚠ Delete '%s'? y/n", name), max(0, width), "…")
+	return boldStyle.
+		Foreground(lipgloss.Color(inkColor)).
+		Background(lipgloss.Color(dangerColor)).
+		Render(text)
 }
 
 func overflowRow(arrow string, n int) string {

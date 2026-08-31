@@ -1,5 +1,5 @@
  ─ Arguments · tail logs ──────────────────────────────────────────────────────
-   file
+   file                                                              (Required)
    pattern  error                                              (Default: error)
 
  ─ Will run ───────────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -19,6 +20,13 @@ type argsScreen struct {
 	ps       []placeholders.Placeholder
 	lastArgs map[string]string
 	form     form
+	// back is the screen this one was opened from, and where esc leads. Held
+	// rather than rebuilt so the list is found as it was left.
+	back screen
+	// tried records a verb that was refused. Until then the screen stays quiet
+	// about the arguments it is still waiting for — an empty required field is
+	// what the screen opened with, and greeting it with a warning is noise.
+	tried bool
 }
 
 // argPaint carries the selection fill across a focused row's value — the same
@@ -28,7 +36,7 @@ func argPaint(value string, focused bool) []run {
 	return []run{{text: value, style: onSelected(textStyle, focused)}}
 }
 
-func newArgsScreen(m *Model, command *library.Command) *argsScreen {
+func newArgsScreen(m *Model, back screen, command *library.Command) *argsScreen {
 	ps := placeholders.Parse(command.Template)
 	s := &argsScreen{
 		id:       command.ID,
@@ -36,6 +44,7 @@ func newArgsScreen(m *Model, command *library.Command) *argsScreen {
 		command:  command.Template,
 		ps:       ps,
 		lastArgs: m.st[command.ID].Args,
+		back:     back,
 	}
 	fields := make([]field, 0, len(ps))
 	for _, p := range ps {
@@ -61,17 +70,46 @@ func (s *argsScreen) values() map[string]string {
 	return out
 }
 
+// problem is the first argument this Command cannot be run without, or "".
+//
+// A Placeholder written with no default is required. The rule is the Command
+// author's to set: `{{name=}}` is how an argument that may be left empty is
+// written, so refusing an empty one here takes nothing away from anyone who
+// meant it. What it buys is the shell never being handed `ssh  'deploy.sh'`.
+func (s *argsScreen) problem() string {
+	for i, p := range s.ps {
+		if p.HasDefault {
+			continue
+		}
+		if strings.TrimSpace(s.form.Field(i).Value()) == "" {
+			return fmt.Sprintf("'%s' is required", p.Name)
+		}
+	}
+	return ""
+}
+
 // update claims the screen's own three verbs; the ring and the typing are the
 // Form's.
 func (s *argsScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch {
 		case key.Matches(keyMsg, keymap.args.Back):
-			m.screen = newListScreen()
+			m.screen = s.back
 			return nil
+		// Both verbs refuse the same way, and neither flashes: the pinned row
+		// says the same thing and stays put until the field is filled, where a
+		// toast would expire while it is still empty.
 		case key.Matches(keyMsg, keymap.args.Run):
+			if s.problem() != "" {
+				s.tried = true
+				return nil
+			}
 			return m.run(s.id, s.values())
 		case key.Matches(keyMsg, keymap.args.Copy):
+			if s.problem() != "" {
+				s.tried = true
+				return nil
+			}
 			return m.copy(s.id, s.values())
 		}
 	}
@@ -82,8 +120,14 @@ func (s *argsScreen) keys(*Model) []footerKey {
 	return footerKeys(keymap.args.Run, keymap.args.Copy, keymap.form.Next, keymap.args.Back)
 }
 
-// note is where an arg's pre-filled value came from — a different thing from a
-// Field's hint, and named apart from it.
+// note is where an arg's pre-filled value came from, or that there was nothing
+// to pre-fill it with — a different thing from a Field's hint, and named apart
+// from it.
+//
+// Every note is a property of the Placeholder rather than of what is in the
+// field, so the note column cannot appear or vanish under a keystroke: typing
+// into a required arg does not take its "(Required)" away, and the values stay
+// in the column they were lined up in.
 func (s *argsScreen) note(p placeholders.Placeholder) string {
 	if _, ok := s.lastArgs[p.Name]; ok {
 		return "(Last used)"
@@ -91,7 +135,7 @@ func (s *argsScreen) note(p placeholders.Placeholder) string {
 	if p.HasDefault {
 		return fmt.Sprintf("(Default: %s)", p.Default)
 	}
-	return ""
+	return "(Required)"
 }
 
 // The arg row's four columns, in the order they are drawn.
@@ -138,21 +182,18 @@ func argColumns(withNote bool) arrangement {
 // Field's own painter (see argPaint and cell).
 func (s *argsScreen) rows(width int, on bool) []string {
 	block := make([]blockRow, 0, len(s.ps))
-	withNote := false
 	for i, p := range s.ps {
-		note := s.note(p)
-		if note != "" {
-			withNote = true
-		}
 		cells := make([]cell, 4)
 		cells[argIndent] = cell{} // nothing to draw; the fill runs through it
 		cells[argLabel] = textCell(p.Name, dimStyle)
 		cells[argValue] = fieldCell(s.form.Field(i), on)
-		cells[argNote] = textCell(note, dimStyle)
+		cells[argNote] = textCell(s.note(p), dimStyle)
 		block = append(block, blockRow{cells: cells, selected: i == s.form.Focused()})
 	}
+	// Every Placeholder has a note, so the first candidate always has one to
+	// carry and the second is what a panel too narrow for the column falls to.
 	return layout(width,
-		candidate{columns: argColumns(withNote), rows: block},
+		candidate{columns: argColumns(true), rows: block},
 		candidate{columns: argColumns(false), rows: block},
 	)
 }
@@ -172,5 +213,12 @@ func (s *argsScreen) view(m *Model) []string {
 	// rather than swelling a box around a one-line command.
 	top = append(top, "")
 	top = append(top, section(width, "Will run", sectionStyle(), "", wrapStyled(preview, width-2))...)
-	return pin(top, nil, m.bodyHeight())
+
+	// The refusal is pinned against the footer rather than shown beside the row
+	// it is about, so it lands in the same slot on every screen that has one.
+	var bottom []string
+	if problem := s.problem(); s.tried && problem != "" {
+		bottom = []string{dangerStyle.Render("⚠ " + problem)}
+	}
+	return pin(top, bottom, m.bodyHeight())
 }

@@ -35,12 +35,18 @@ type Deps struct {
 	State       state.State
 	SaveLibrary func(library.Library) error
 	SaveState   func(state.State) error
-	Copy        func(string)
-	Now         func() time.Time
+	// Copy reports whether a native clipboard tool took the text. It is false
+	// when only OSC 52 was sent, which nothing can confirm, and the flash the
+	// user reads is phrased from it.
+	Copy func(string) bool
+	Now  func() time.Time
 }
 
-// screen is one of potato's four surfaces. Each is constructed fresh on
-// transition, which is what resets its query, focus and field values.
+// screen is one of potato's four surfaces. The edit and arg screens are built
+// fresh for the Command they were opened on, which is what makes their fields
+// start from it, and each holds the screen that opened it: cancelling or
+// finishing hands the keyboard back to that screen rather than to a new one, so
+// the list you came from keeps its query, its selection and its focus.
 type screen interface {
 	update(m *Model, msg tea.Msg) tea.Cmd
 	view(m *Model) []string
@@ -103,13 +109,27 @@ func (m *Model) SetSize(width, height int) {
 	}
 }
 
-func (m *Model) Init() tea.Cmd { return nil }
+// Init asks the terminal what colour it is painted on. That answer is the only
+// input to which palette potato draws in, and the one thing about the frame it
+// cannot work out for itself. A terminal that never answers keeps the dark
+// palette — see applyPalette.
+func (m *Model) Init() tea.Cmd {
+	return func() tea.Msg { return tea.RequestBackgroundColor() }
+}
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var blink tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.SetSize(msg.Width, msg.Height)
+		return m, nil
+	case tea.BackgroundColorMsg:
+		// Only a light ground is worth acting on: potato is already dark, and a
+		// terminal that answers nothing at all leaves it there — which is the
+		// fallback, not an oversight. See applyPalette.
+		if !msg.IsDark() {
+			applyPalette(lightPalette)
+		}
 		return m, nil
 	case flashExpiredMsg:
 		// A pending timer clears whatever flash is showing, even one raised
@@ -204,8 +224,11 @@ func (m *Model) setFlash(msg string, d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return flashExpiredMsg{} })
 }
 
+// flashDefault is how long a confirmation holds the footer: long enough to be
+// read by someone who looked away as they pressed the key, since a confirmation
+// nobody saw is one that did not happen. A failure outlasts it — see finish.
 func (m *Model) flashDefault(msg string) tea.Cmd {
-	return m.setFlash(msg, 1500*time.Millisecond)
+	return m.setFlash(msg, 3000*time.Millisecond)
 }
 
 // quit ends the program, drawing one empty frame on the way out so the inline
@@ -284,8 +307,13 @@ func (m *Model) copy(id string, values map[string]string) tea.Cmd {
 		return nil
 	}
 	saved := m.rememberUse(id, values)
-	if m.deps.Copy != nil {
-		m.deps.Copy(renderCommand(command.Template, values))
+	// The flash claims only what potato watched happen. A native tool taking the
+	// text is a copy; OSC 52 alone is a sequence sent into a terminal that never
+	// answers, and telling the user their clipboard is loaded when it may not be
+	// costs them the paste they were about to make.
+	native := m.deps.Copy != nil && m.deps.Copy(renderCommand(command.Template, values))
+	if !native {
+		return m.finish("Copied via OSC 52 — terminal support varies", saved)
 	}
 	return m.finish("Copied to clipboard", saved)
 }

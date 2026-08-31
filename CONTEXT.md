@@ -25,11 +25,11 @@ The ordered Fields a screen holds, with the one focus ring that moves the keyboa
 _Avoid_: fieldset, dialog
 
 **Layout**:
-The cells one line of the frame is laid out from, and the candidate arrangements that fit them to a width. A list row, an arg row, the search row and the delete confirm each go through one, and the Layout owns all four of the decisions they share: how wide each column is, measured across the whole *block* — the lines laid out together, which is why a Layout is handed all of them at once and never one alone — so the columns line up down every one of them; what the line gives up as the terminal narrows; the padding between what is left; and the selection bar running unbroken through every run and every pad of it.
+The cells one line of the frame is laid out from, and the candidate arrangements that fit them to a width. A list row, an arg row and the search row each go through one, and the Layout owns all four of the decisions they share: how wide each column is, measured across the whole *block* — the lines laid out together, which is why a Layout is handed all of them at once and never one alone — so the columns line up down every one of them; what the line gives up as the terminal narrows; the padding between what is left; and the selection bar running unbroken through every run and every pad of it.
 _Avoid_: row (a row is one line of the frame, laid out or not), grid, table
 
 **Placeholder**:
-A `{{name}}` or `{{name=default}}` slot in a Command's template, filled in via the arg form before hand-off.
+A `{{name}}` or `{{name=default}}` slot in a Command's template, filled in via the arg form before hand-off. Writing one without a default makes it required, and the arg form refuses to run or copy while it is empty; `{{name=}}` is how a Placeholder that may be left empty is written.
 _Avoid_: variable, parameter, argument (an *argument* is the value supplied for a Placeholder)
 
 **Hand-off**:

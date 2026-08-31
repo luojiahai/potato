@@ -18,7 +18,7 @@ Run `potato`. Type to narrow the list, then press Enter. The command arrives pre
 
 Potato draws a fixed block of rows under the prompt you launched it from rather than taking over the screen, and erases them on the way out. What is left in your scrollback is the command, not the picker you found it with.
 
-Ctrl-Y copies rather than hands off. It writes through a system clipboard tool when there is one and always emits OSC 52 as well, so it still works over SSH and inside tmux. Tmux needs `set -s set-clipboard on` in `~/.tmux.conf` to pass it through.
+Ctrl-Y copies rather than hands off. It writes through a system clipboard tool when there is one and always emits OSC 52 as well, which is what can carry the copy over SSH and inside tmux when the terminal supports it — the flash says which of the two your copy got. Tmux needs `set -s set-clipboard on` in `~/.tmux.conf` to pass it through.
 
 Search is a fuzzy subsequence match across each command's name, description, and text, ranked in that order — a name hit outranks a description hit, which outranks one in the command itself — and the letters that matched are picked out in the name. An empty query lists what you used most recently, and anything never used follows in file order.
 
@@ -42,7 +42,7 @@ Adding and editing happen in the app. Nothing sends you out to `$EDITOR`. Ctrl-C
 
 ### Placeholders
 
-Commands are templates. Write `ssh {{host=prod-1}} 'deploy.sh'` and potato asks for `host` before handing anything over, showing the rendered result as you type. Each field starts from the value you used last time for that command, falling back to the default in the template.
+Commands are templates. Write `ssh {{host=prod-1}} 'deploy.sh'` and potato asks for `host` before handing anything over, showing the rendered result as you type. Each field starts from the value you used last time for that command, falling back to the default in the template. A placeholder written without a default is required — potato refuses to run or copy while it is empty. `{{host=}}` is how one that may be left empty is written.
 
 ![The argument form, with two placeholders filled from last-used and default values, above a live preview of the command that will run](docs/media/arguments.png)
 
