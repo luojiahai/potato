@@ -12,6 +12,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -142,7 +143,11 @@ func (s *listScreen) copy(m *Model) tea.Cmd {
 	}
 	if len(placeholders.Parse(selected.Template)) > 0 {
 		m.screen = newArgsScreen(m, s, selected)
-		return m.flashDefault("Needs args — fill in, then " + keymap.args.Copy.Help().Key)
+		// Guidance, not a confirmation, so it holds for less than flashDefault:
+		// the flash sits in the footer's key row, and this is the one screen
+		// whose keys the user was just diverted to needing.
+		return m.setFlash("Needs args — fill in, then "+keymap.args.Copy.Help().Key,
+			1500*time.Millisecond)
 	}
 	return m.copy(selected.ID, map[string]string{})
 }
