@@ -41,7 +41,12 @@ func harness(t *testing.T) (*Model, *recorder) {
 		}
 		return rec.failWith
 	}
-	deps.Copy = func(text string) { rec.copied = append(rec.copied, text) }
+	// true stands in for a native clipboard tool that took the text, which is the
+	// path the "Copied to clipboard" assertions are about.
+	deps.Copy = func(text string) bool {
+		rec.copied = append(rec.copied, text)
+		return true
+	}
 	m := New(deps)
 	m.SetSize(80, 24)
 	return m, rec
@@ -108,6 +113,24 @@ func TestCtrlYCopiesWithoutHandingOff(t *testing.T) {
 	}
 	if !strings.Contains(render(t, m), "Copied to clipboard") {
 		t.Error("no flash after copying")
+	}
+}
+
+// With no native tool, all that ran is a sequence the terminal never answers.
+// The flash says that rather than promising a clipboard nobody checked — the
+// user who trusts it pastes whatever was there before.
+func TestCopyWithoutANativeToolSaysWhatItActuallyDid(t *testing.T) {
+	m, _ := harness(t)
+	m.deps.Copy = func(string) bool { return false }
+	press(m, []string{"ports"})
+	send(m, tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl})
+
+	frame := render(t, m)
+	if strings.Contains(frame, "Copied to clipboard") {
+		t.Errorf("a copy potato could not confirm claimed the clipboard:\n%s", frame)
+	}
+	if !strings.Contains(frame, "OSC 52") {
+		t.Errorf("the flash does not say what actually happened:\n%s", frame)
 	}
 }
 

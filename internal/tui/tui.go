@@ -35,8 +35,11 @@ type Deps struct {
 	State       state.State
 	SaveLibrary func(library.Library) error
 	SaveState   func(state.State) error
-	Copy        func(string)
-	Now         func() time.Time
+	// Copy reports whether a native clipboard tool took the text. It is false
+	// when only OSC 52 was sent, which nothing can confirm, and the flash the
+	// user reads is phrased from it.
+	Copy func(string) bool
+	Now  func() time.Time
 }
 
 // screen is one of potato's four surfaces. The edit and arg screens are built
@@ -221,8 +224,11 @@ func (m *Model) setFlash(msg string, d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return flashExpiredMsg{} })
 }
 
+// flashDefault is how long a confirmation holds the footer: long enough to be
+// read by someone who looked away as they pressed the key, since a confirmation
+// nobody saw is one that did not happen. A failure outlasts it — see finish.
 func (m *Model) flashDefault(msg string) tea.Cmd {
-	return m.setFlash(msg, 1500*time.Millisecond)
+	return m.setFlash(msg, 3000*time.Millisecond)
 }
 
 // quit ends the program, drawing one empty frame on the way out so the inline
@@ -301,8 +307,13 @@ func (m *Model) copy(id string, values map[string]string) tea.Cmd {
 		return nil
 	}
 	saved := m.rememberUse(id, values)
-	if m.deps.Copy != nil {
-		m.deps.Copy(renderCommand(command.Template, values))
+	// The flash claims only what potato watched happen. A native tool taking the
+	// text is a copy; OSC 52 alone is a sequence sent into a terminal that never
+	// answers, and telling the user their clipboard is loaded when it may not be
+	// costs them the paste they were about to make.
+	native := m.deps.Copy != nil && m.deps.Copy(renderCommand(command.Template, values))
+	if !native {
+		return m.finish("Copied via OSC 52 — terminal support varies", saved)
 	}
 	return m.finish("Copied to clipboard", saved)
 }
