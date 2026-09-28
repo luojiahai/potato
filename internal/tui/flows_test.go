@@ -233,8 +233,32 @@ func TestAnotherPotatosCommandSurvivesThisOnesDelete(t *testing.T) {
 	}
 }
 
-// An edit to a Command another potato has changed or deleted since the form
-// opened would silently undo that potato's work, so it is refused on the form.
+func TestAnEditRefusedForAStaleCopySucceedsWhenReopened(t *testing.T) {
+	m, rec := harness(t)
+	elsewhere, err := library.Update(rec.lib, "id-deploy", library.Draft{Name: "deploy prod", Template: "ssh {{host=prod-2}} 'deploy.sh'"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.lib = elsewhere
+
+	press(m, []string{"ctrl+o", "ctrl+u", "renamed", "enter"})
+	if frame := render(t, m); !strings.Contains(frame, "changed in another potato") {
+		t.Fatalf("the save against a stale copy was not refused:\n%s", frame)
+	}
+	press(m, []string{"esc", "esc", "ctrl+o"})
+	edit, ok := m.screen.(*editScreen)
+	if !ok {
+		t.Fatalf("ctrl+o opened %T, want the editor", m.screen)
+	}
+	if got := edit.value(fieldCommand); got != "ssh {{host=prod-2}} 'deploy.sh'" {
+		t.Errorf("the reopened form holds %q, want the other potato's version", got)
+	}
+	press(m, []string{"ctrl+u", "renamed", "enter"})
+	if command, _ := library.Find(rec.lib, "id-deploy"); command.Name != "renamed" {
+		t.Errorf("the save after reopening did not land: %+v", command)
+	}
+}
+
 func TestAnEditRefusesToOverwriteAnotherPotatosChange(t *testing.T) {
 	for name, tc := range map[string]struct {
 		elsewhere func(library.Library) library.Library

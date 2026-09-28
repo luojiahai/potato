@@ -244,17 +244,21 @@ func (m *Model) rememberUse(id string, args map[string]string) error {
 	return m.changeState(func(s state.State) state.State { return state.RecordUse(s, id, args, now) })
 }
 
-// changeLibrary and changeState apply a change to the file and adopt what was
-// written, reporting the error rather than flashing it. Raising the flash is
-// finish's, so an action that writes both files raises exactly one.
-//
-// Nothing is adopted when a change does not land, so the screen never shows a
-// Library that is not on disk: an edit that failed to save stays on the form it
-// was typed into, rather than sitting in a list that loses it on the next
-// launch.
+// changeLibrary applies a change to the file and adopts the Library the file
+// then holds, reporting the error rather than flashing it. A change that ran
+// and did not land leaves the file as it was read, and that is adopted too: a
+// form reopened after a refusal starts from what another potato saved, not
+// from the copy that was refused.
 func (m *Model) changeLibrary(change func(library.Library) (library.Library, error)) error {
-	next, err := m.deps.ChangeLibrary(change)
+	var read *library.Library
+	next, err := m.deps.ChangeLibrary(func(lib library.Library) (library.Library, error) {
+		read = &lib
+		return change(lib)
+	})
 	if err != nil {
+		if read != nil {
+			m.lib = *read
+		}
 		return err
 	}
 	m.lib = next
