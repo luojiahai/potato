@@ -3,6 +3,7 @@ package search
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/luojiahai/potato/internal/library"
 	"github.com/luojiahai/potato/internal/state"
@@ -43,8 +44,8 @@ func equal(a, b []string) bool {
 
 func TestEmptyQueryMRUFirst(t *testing.T) {
 	s := state.State{
-		"c3": {LastUsedAt: "2026-07-20T00:00:00Z"},
-		"c2": {LastUsedAt: "2026-07-23T00:00:00Z"},
+		"c3": {LastUsedAt: time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)},
+		"c2": {LastUsedAt: time.Date(2026, 7, 23, 0, 0, 0, 0, time.UTC)},
 	}
 	want := []string{"tail logs", "docker nuke", "deploy prod", "list ports"}
 	if got := names(Commands(commands, s, "")); !equal(got, want) {

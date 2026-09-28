@@ -8,7 +8,6 @@ import (
 	"math"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/luojiahai/potato/internal/library"
 	"github.com/luojiahai/potato/internal/state"
@@ -75,14 +74,14 @@ func Commands(commands []library.Command, s state.State, query string) []library
 		used := []library.Command{}
 		rest := []library.Command{}
 		for _, command := range commands {
-			if s[command.ID].LastUsedAt != "" {
+			if !s[command.ID].LastUsedAt.IsZero() {
 				used = append(used, command)
 			} else {
 				rest = append(rest, command)
 			}
 		}
 		sort.SliceStable(used, func(i, j int) bool {
-			return parseTime(s[used[j].ID].LastUsedAt).Before(parseTime(s[used[i].ID].LastUsedAt))
+			return s[used[i].ID].LastUsedAt.After(s[used[j].ID].LastUsedAt)
 		})
 		return append(used, rest...)
 	}
@@ -116,12 +115,4 @@ func Commands(commands []library.Command, s state.State, query string) []library
 		list = append(list, s.command)
 	}
 	return list
-}
-
-func parseTime(s string) time.Time {
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
 }

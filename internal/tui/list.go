@@ -595,13 +595,11 @@ func metaRuns(m *Model, command library.Command) []run {
 	if n := len(placeholders.Parse(command.Template)); n > 0 {
 		parts = append(parts, run{text: fmt.Sprintf("⌁%d", n), style: accentStyle})
 	}
-	if used := m.st[command.ID].LastUsedAt; used != "" {
-		if ago := timeAgo(used, m.deps.Now()); ago != "" {
-			if len(parts) > 0 {
-				parts = append(parts, run{text: " · ", style: dimStyle})
-			}
-			parts = append(parts, run{text: ago, style: dimStyle})
+	if used := m.st[command.ID].LastUsedAt; !used.IsZero() {
+		if len(parts) > 0 {
+			parts = append(parts, run{text: " · ", style: dimStyle})
 		}
+		parts = append(parts, run{text: timeAgo(used, m.deps.Now()), style: dimStyle})
 	}
 	return parts
 }

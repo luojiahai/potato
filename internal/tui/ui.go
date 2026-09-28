@@ -355,11 +355,7 @@ func window(rows []string, at, height int) []string {
 
 // ---------- misc ----------
 
-func timeAgo(iso string, now time.Time) string {
-	t, err := time.Parse(time.RFC3339, iso)
-	if err != nil {
-		return ""
-	}
+func timeAgo(t, now time.Time) string {
 	minutes := int(now.Sub(t).Minutes())
 	if minutes < 1 {
 		return "Just now"
