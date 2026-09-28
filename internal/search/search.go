@@ -1,4 +1,4 @@
-// Package search is the fuzzy search over the Library (spec §3.1):
+// Package search is the fuzzy search over the Library:
 // subsequence match on name + description + command text, name hits weighted
 // highest, then description, then command. An empty query is MRU first
 // (State.LastUsedAt), never-used in file order.
@@ -8,7 +8,6 @@ import (
 	"math"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/luojiahai/potato/internal/library"
 	"github.com/luojiahai/potato/internal/state"
@@ -47,26 +46,26 @@ func indexRuneFrom(t []rune, r rune, from int) int {
 	return -1
 }
 
-// NameMatchIndices returns the greedy subsequence match positions of query
-// within name — the same walk the scorer takes — for match highlighting in
-// the TUI list. ok=false means no name match (the row may still have matched
-// via description/command) or an empty query.
-func NameMatchIndices(query, name string) (map[int]bool, bool) {
+// NameHits marks the runes of name that query's greedy subsequence match lands
+// on — the same walk the scorer takes — for match highlighting in the TUI
+// list. It has one entry per rune of name. It is nil for an empty query or one
+// that misses the name.
+func NameHits(query, name string) []bool {
 	if strings.TrimSpace(query) == "" {
-		return nil, false
+		return nil
 	}
 	t := []rune(strings.ToLower(name))
-	indices := map[int]bool{}
+	hits := make([]bool, len(t))
 	ti := 0
 	for _, r := range strings.ToLower(query) {
 		found := indexRuneFrom(t, r, ti)
 		if found < 0 {
-			return nil, false
+			return nil
 		}
-		indices[found] = true
+		hits[found] = true
 		ti = found + 1
 	}
-	return indices, true
+	return hits
 }
 
 func Commands(commands []library.Command, s state.State, query string) []library.Command {
@@ -74,14 +73,14 @@ func Commands(commands []library.Command, s state.State, query string) []library
 		used := []library.Command{}
 		rest := []library.Command{}
 		for _, command := range commands {
-			if s[command.ID].LastUsedAt != "" {
+			if !s[command.ID].LastUsedAt.IsZero() {
 				used = append(used, command)
 			} else {
 				rest = append(rest, command)
 			}
 		}
 		sort.SliceStable(used, func(i, j int) bool {
-			return parseTime(s[used[j].ID].LastUsedAt).Before(parseTime(s[used[i].ID].LastUsedAt))
+			return s[used[i].ID].LastUsedAt.After(s[used[j].ID].LastUsedAt)
 		})
 		return append(used, rest...)
 	}
@@ -115,12 +114,4 @@ func Commands(commands []library.Command, s state.State, query string) []library
 		list = append(list, s.command)
 	}
 	return list
-}
-
-func parseTime(s string) time.Time {
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
 }

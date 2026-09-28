@@ -37,8 +37,8 @@ func TestRecordUseRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	loaded := Load(file)
-	if loaded["cmd-1"].LastUsedAt != "2026-07-24T09:12:00.000Z" {
-		t.Errorf("lastUsedAt = %q", loaded["cmd-1"].LastUsedAt)
+	if want := time.Date(2026, 7, 24, 9, 12, 0, 0, time.UTC); !loaded["cmd-1"].LastUsedAt.Equal(want) {
+		t.Errorf("lastUsedAt = %v, want %v", loaded["cmd-1"].LastUsedAt, want)
 	}
 	if loaded["cmd-1"].Args["host"] != "prod-2" {
 		t.Errorf("args = %v", loaded["cmd-1"].Args)
@@ -69,10 +69,55 @@ func TestForgetDropsOnlyThatCommand(t *testing.T) {
 func TestRecordUseMergesArgs(t *testing.T) {
 	s := RecordUse(State{}, "x", map[string]string{"a": "1", "b": "2"}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	s = RecordUse(s, "x", map[string]string{"b": "3"}, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
-	if s["x"].LastUsedAt != "2026-02-01T00:00:00.000Z" {
-		t.Errorf("lastUsedAt = %q", s["x"].LastUsedAt)
+	if want := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC); !s["x"].LastUsedAt.Equal(want) {
+		t.Errorf("lastUsedAt = %v, want %v", s["x"].LastUsedAt, want)
 	}
 	if s["x"].Args["a"] != "1" || s["x"].Args["b"] != "3" {
 		t.Errorf("args = %v, want a=1 b=3", s["x"].Args)
+	}
+}
+
+func TestLoadReadsMillisecondTimestamps(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "state.json")
+	content := `{"a":{"lastUsedAt":"2026-07-24T09:12:00.000Z","args":{"host":"prod-2"}}}`
+	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded := Load(file)
+	if want := time.Date(2026, 7, 24, 9, 12, 0, 0, time.UTC); !loaded["a"].LastUsedAt.Equal(want) {
+		t.Errorf("lastUsedAt = %v, want %v", loaded["a"].LastUsedAt, want)
+	}
+	if loaded["a"].Args["host"] != "prod-2" {
+		t.Errorf("args = %v", loaded["a"].Args)
+	}
+}
+
+func TestSaveWritesSortedIndentedJSON(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "state.json")
+	now := time.Date(2026, 7, 24, 9, 12, 0, 0, time.FixedZone("AEST", 10*60*60))
+	s := RecordUse(State{}, "b", map[string]string{"z": "a && b", "a": "<x>"}, now)
+	s = RecordUse(s, "a", nil, now)
+	if err := Save(file, s); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{
+  "a": {
+    "lastUsedAt": "2026-07-23T23:12:00Z"
+  },
+  "b": {
+    "lastUsedAt": "2026-07-23T23:12:00Z",
+    "args": {
+      "a": "<x>",
+      "z": "a && b"
+    }
+  }
+}
+`
+	if string(got) != want {
+		t.Errorf("state.json =\n%s\nwant\n%s", got, want)
 	}
 }

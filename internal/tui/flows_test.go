@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/luojiahai/potato/internal/library"
@@ -63,7 +64,7 @@ func TestEnterOnAPlainCommandHandsOffAndRecordsUse(t *testing.T) {
 		t.Fatal("no state was saved")
 	}
 	last := rec.states[len(rec.states)-1]
-	if last["id-ports"].LastUsedAt != "2026-07-24T10:00:00.000Z" {
+	if !last["id-ports"].LastUsedAt.Equal(time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC)) {
 		t.Errorf("state = %+v", last)
 	}
 }

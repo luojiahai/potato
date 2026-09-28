@@ -1,13 +1,15 @@
 package search
 
 import (
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/luojiahai/potato/internal/library"
 	"github.com/luojiahai/potato/internal/state"
 )
 
-// Spec §3.1: match over name + description + command, name weighted highest,
+// Search matches over name + description + command, name weighted highest,
 // then description, then command. Empty query: MRU first (State keyed by id),
 // never-used follow in file (array) order.
 
@@ -42,8 +44,8 @@ func equal(a, b []string) bool {
 
 func TestEmptyQueryMRUFirst(t *testing.T) {
 	s := state.State{
-		"c3": {LastUsedAt: "2026-07-20T00:00:00Z"},
-		"c2": {LastUsedAt: "2026-07-23T00:00:00Z"},
+		"c3": {LastUsedAt: time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)},
+		"c2": {LastUsedAt: time.Date(2026, 7, 23, 0, 0, 0, 0, time.UTC)},
 	}
 	want := []string{"tail logs", "docker nuke", "deploy prod", "list ports"}
 	if got := names(Commands(commands, s, "")); !equal(got, want) {
@@ -95,32 +97,36 @@ func TestDescriptionHitOutranksCommandHit(t *testing.T) {
 	}
 }
 
-func TestNameMatchIndices(t *testing.T) {
-	indices, ok := NameMatchIndices("dpl", "deploy prod")
-	if !ok {
-		t.Fatal("expected a match")
-	}
-	for _, i := range []int{0, 2, 3} {
-		if !indices[i] {
-			t.Errorf("index %d not matched: %v", i, indices)
+func hitsAt(hits []bool) []int {
+	at := []int{}
+	for i, hit := range hits {
+		if hit {
+			at = append(at, i)
 		}
 	}
-	if len(indices) != 3 {
-		t.Errorf("got %v, want exactly {0,2,3}", indices)
+	return at
+}
+
+func TestNameHits(t *testing.T) {
+	hits := NameHits("dpl", "deploy prod")
+	if len(hits) != len([]rune("deploy prod")) {
+		t.Fatalf("got %d entries, want one per rune of the name", len(hits))
+	}
+	if got := hitsAt(hits); !slices.Equal(got, []int{0, 2, 3}) {
+		t.Errorf("hits at %v, want [0 2 3]", got)
 	}
 }
 
-func TestNameMatchIndicesIsCaseInsensitive(t *testing.T) {
-	indices, ok := NameMatchIndices("DP", "deploy prod")
-	if !ok || !indices[0] || !indices[2] || len(indices) != 2 {
-		t.Errorf("got %v ok=%v, want {0,2}", indices, ok)
+func TestNameHitsIsCaseInsensitive(t *testing.T) {
+	if got := hitsAt(NameHits("DP", "deploy prod")); !slices.Equal(got, []int{0, 2}) {
+		t.Errorf("hits at %v, want [0 2]", got)
 	}
 }
 
-func TestNameMatchIndicesMisses(t *testing.T) {
+func TestNameHitsMisses(t *testing.T) {
 	for _, query := range []string{"zzz", "", "  "} {
-		if _, ok := NameMatchIndices(query, "deploy prod"); ok {
-			t.Errorf("query %q reported a match", query)
+		if hits := NameHits(query, "deploy prod"); hits != nil {
+			t.Errorf("query %q reported hits %v", query, hits)
 		}
 	}
 }

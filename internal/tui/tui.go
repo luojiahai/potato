@@ -1,4 +1,4 @@
-// Package tui is the potato TUI (spec §3): a fuzzy-search list with a detail
+// Package tui is the potato TUI: a fuzzy-search list with a detail
 // strip, a single-form arg screen with live preview, and in-app CRUD.
 //
 // It renders inline rather than on the alternate screen — a block of fixed
@@ -20,6 +20,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/luojiahai/potato/internal/library"
+	"github.com/luojiahai/potato/internal/placeholders"
 	"github.com/luojiahai/potato/internal/state"
 )
 
@@ -297,7 +298,7 @@ func (m *Model) run(id string, values map[string]string) tea.Cmd {
 	// the user came for and potato is closing, so the flash would be erased by
 	// the same frame that draws it. State is disposable; the command is not.
 	_ = m.rememberUse(id, values)
-	m.handoff = renderCommand(command.Template, values)
+	m.handoff = placeholders.Render(command.Template, values)
 	return m.quit()
 }
 
@@ -311,7 +312,7 @@ func (m *Model) copy(id string, values map[string]string) tea.Cmd {
 	// text is a copy; OSC 52 alone is a sequence sent into a terminal that never
 	// answers, and telling the user their clipboard is loaded when it may not be
 	// costs them the paste they were about to make.
-	native := m.deps.Copy != nil && m.deps.Copy(renderCommand(command.Template, values))
+	native := m.deps.Copy != nil && m.deps.Copy(placeholders.Render(command.Template, values))
 	if !native {
 		return m.finish("Copied via OSC 52 — terminal support varies", saved)
 	}

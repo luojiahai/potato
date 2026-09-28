@@ -50,7 +50,7 @@ func newArgsScreen(m *Model, back screen, command *library.Command) *argsScreen 
 	for _, p := range ps {
 		f := newField(lineMode)
 		f.paint = argPaint
-		// pre-fill precedence: last value > default > empty (spec §2)
+		// pre-fill precedence: last value > default > empty
 		if value, ok := s.lastArgs[p.Name]; ok {
 			f.SetValue(value)
 		} else if p.HasDefault {

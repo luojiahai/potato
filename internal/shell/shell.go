@@ -1,4 +1,4 @@
-// Package shell generates potato's shell glue (spec §4.1, §6.2). The
+// Package shell generates potato's shell glue. The
 // installed wrapper function *is* the `potato` command: it invokes the binary
 // by absolute path (no PATH edit) and carries the selection back via a mktemp
 // --out file — empty file = cancelled. zsh pre-fills with `print -z`; bash
@@ -100,8 +100,7 @@ func Script(shell, bin, dir string) (string, bool) {
 }
 
 // WriteInitFiles regenerates all three init files next to the binary's data
-// dir — run by the installer and after every `potato update` binary swap
-// (spec §6.2, §8).
+// dir.
 func WriteInitFiles(bin, dir string) error {
 	for _, shell := range []string{"zsh", "bash", "sh"} {
 		script, _ := Script(shell, bin, dir)

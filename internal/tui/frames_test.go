@@ -44,7 +44,7 @@ func fixtureDeps() Deps {
 			},
 		},
 		State: state.State{
-			"id-deploy": {LastUsedAt: "2026-07-24T08:00:00Z", Args: map[string]string{"host": "prod-7"}},
+			"id-deploy": {LastUsedAt: time.Date(2026, 7, 24, 8, 0, 0, 0, time.UTC), Args: map[string]string{"host": "prod-7"}},
 		},
 		Now: func() time.Time { return time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC) },
 	}

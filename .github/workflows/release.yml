@@ -1,4 +1,4 @@
-# Release pipeline (spec §6.1): one job on tag push — build all four targets,
+# Release pipeline: one job on tag push — build all four targets,
 # checksum, publish to GitHub Releases.
 name: release
 

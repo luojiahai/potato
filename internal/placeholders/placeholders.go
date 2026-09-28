@@ -1,9 +1,12 @@
-// Package placeholders handles {{name}} / {{name=default}} (spec §2).
+// Package placeholders handles {{name}} / {{name=default}}.
 // Anything else stays literal; substitution is verbatim — template authors do
 // their own quoting.
 package placeholders
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 type Placeholder struct {
 	Name       string
@@ -49,14 +52,11 @@ func resolve(template string, values map[string]string) map[string]string {
 }
 
 func Render(template string, values map[string]string) string {
-	resolved := resolve(template, values)
-	out := ""
-	last := 0
-	for _, m := range re.FindAllStringSubmatchIndex(template, -1) {
-		out += template[last:m[0]] + resolved[template[m[2]:m[3]]]
-		last = m[1]
+	var b strings.Builder
+	for _, seg := range RenderSegments(template, values) {
+		b.WriteString(seg.Text)
 	}
-	return out + template[last:]
+	return b.String()
 }
 
 // Segment is a run of the template, flagged as either literal or the thing
@@ -69,32 +69,24 @@ type Segment struct {
 // TemplateSegments splits into literal/placeholder runs with the raw {{...}}
 // tokens kept, so the edit screen can highlight the Placeholder slots.
 func TemplateSegments(template string) []Segment {
-	out := []Segment{}
-	last := 0
-	for _, m := range re.FindAllStringSubmatchIndex(template, -1) {
-		if m[0] > last {
-			out = append(out, Segment{Text: template[last:m[0]]})
-		}
-		out = append(out, Segment{Text: template[m[0]:m[1]], Flag: true})
-		last = m[1]
-	}
-	if last < len(template) {
-		out = append(out, Segment{Text: template[last:]})
-	}
-	return out
+	return segments(template, func(_, token string) string { return token })
 }
 
 // RenderSegments splits into literal/substituted runs so the live preview can
-// highlight the substituted values (spec §3.2).
+// highlight the substituted values.
 func RenderSegments(template string, values map[string]string) []Segment {
 	resolved := resolve(template, values)
+	return segments(template, func(name, _ string) string { return resolved[name] })
+}
+
+func segments(template string, fill func(name, token string) string) []Segment {
 	out := []Segment{}
 	last := 0
 	for _, m := range re.FindAllStringSubmatchIndex(template, -1) {
 		if m[0] > last {
 			out = append(out, Segment{Text: template[last:m[0]]})
 		}
-		out = append(out, Segment{Text: resolved[template[m[2]:m[3]]], Flag: true})
+		out = append(out, Segment{Text: fill(template[m[2]:m[3]], template[m[0]:m[1]]), Flag: true})
 		last = m[1]
 	}
 	if last < len(template) {

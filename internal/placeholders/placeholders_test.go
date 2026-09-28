@@ -2,7 +2,7 @@ package placeholders
 
 import "testing"
 
-// Spec §2: {{name}} / {{name=default}}, name = [A-Za-z0-9_-]+, no escapes,
+// {{name}} / {{name=default}}, name = [A-Za-z0-9_-]+, no escapes,
 // repeats prompt once (first default wins), verbatim substitution.
 
 func TestParseFindsNamedPlaceholders(t *testing.T) {

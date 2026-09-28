@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# potato installer (spec §6.2). Everything lands under ~/.potato (POTATO_INSTALL
+# potato installer. Everything lands under ~/.potato (POTATO_INSTALL
 # overrides); no sudo, no PATH edit. Advertised install:
 #
 #   curl -fsSL https://raw.githubusercontent.com/luojiahai/potato/main/install.sh | bash \

@@ -27,7 +27,6 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/luojiahai/potato/internal/placeholders"
 	"github.com/luojiahai/potato/internal/version"
 )
 
@@ -356,11 +355,7 @@ func window(rows []string, at, height int) []string {
 
 // ---------- misc ----------
 
-func timeAgo(iso string, now time.Time) string {
-	t, err := time.Parse(time.RFC3339, iso)
-	if err != nil {
-		return ""
-	}
+func timeAgo(t, now time.Time) string {
 	minutes := int(now.Sub(t).Minutes())
 	if minutes < 1 {
 		return "Just now"
@@ -617,8 +612,4 @@ func wrapStyledHard(runs []run, width, caret int, on bool) ([]string, int) {
 	}
 	flush()
 	return append(out, line.String()), caretRow
-}
-
-func renderCommand(template string, values map[string]string) string {
-	return placeholders.Render(template, values)
 }
