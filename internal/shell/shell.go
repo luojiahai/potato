@@ -100,7 +100,7 @@ func Script(shell, bin, dir string) (string, bool) {
 }
 
 // WriteInitFiles regenerates all three init files next to the binary's data
-// dir — run by the installer and after every `potato update` binary swap.
+// dir.
 func WriteInitFiles(bin, dir string) error {
 	for _, shell := range []string{"zsh", "bash", "sh"} {
 		script, _ := Script(shell, bin, dir)

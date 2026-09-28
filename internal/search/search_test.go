@@ -97,7 +97,6 @@ func TestDescriptionHitOutranksCommandHit(t *testing.T) {
 	}
 }
 
-// hitsAt reads a NameHits result back as the rune indices it marks.
 func hitsAt(hits []bool) []int {
 	at := []int{}
 	for i, hit := range hits {

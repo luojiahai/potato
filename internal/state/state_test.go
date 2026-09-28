@@ -77,8 +77,6 @@ func TestRecordUseMergesArgs(t *testing.T) {
 	}
 }
 
-// A state.json written with millisecond timestamps reads back as the same
-// instants, so upgrading potato keeps every last-used time.
 func TestLoadReadsMillisecondTimestamps(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "state.json")
 	content := `{"a":{"lastUsedAt":"2026-07-24T09:12:00.000Z","args":{"host":"prod-2"}}}`

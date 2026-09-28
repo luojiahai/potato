@@ -48,9 +48,8 @@ func indexRuneFrom(t []rune, r rune, from int) int {
 
 // NameHits marks the runes of name that query's greedy subsequence match lands
 // on — the same walk the scorer takes — for match highlighting in the TUI
-// list. It has one entry per rune of name, so it indexes the way the name
-// does. It is nil for an empty query or one that misses the name; the row may
-// still have matched on its description or command.
+// list. It has one entry per rune of name. It is nil for an empty query or one
+// that misses the name.
 func NameHits(query, name string) []bool {
 	if strings.TrimSpace(query) == "" {
 		return nil

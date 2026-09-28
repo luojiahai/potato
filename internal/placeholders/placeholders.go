@@ -51,7 +51,6 @@ func resolve(template string, values map[string]string) map[string]string {
 	return resolved
 }
 
-// Render substitutes every Placeholder's value into the template.
 func Render(template string, values map[string]string) string {
 	var b strings.Builder
 	for _, seg := range RenderSegments(template, values) {
@@ -80,9 +79,6 @@ func RenderSegments(template string, values map[string]string) []Segment {
 	return segments(template, func(name, _ string) string { return resolved[name] })
 }
 
-// segments is the one walk over a template: literal runs as written, and each
-// Placeholder flagged, with the text fill gives it from its name and its whole
-// {{...}} token.
 func segments(template string, fill func(name, token string) string) []Segment {
 	out := []Segment{}
 	last := 0
