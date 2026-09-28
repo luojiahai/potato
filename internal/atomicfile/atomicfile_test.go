@@ -4,8 +4,25 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
+
+// umask sets the process umask for one test.
+func umask(t *testing.T, mask int) {
+	t.Helper()
+	old := syscall.Umask(mask)
+	t.Cleanup(func() { syscall.Umask(old) })
+}
+
+func mode(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
+}
 
 func read(t *testing.T, path string) string {
 	t.Helper()
@@ -16,7 +33,6 @@ func read(t *testing.T, path string) string {
 	return string(got)
 }
 
-// entries lists a directory, so a test can see a temp file left behind.
 func entries(t *testing.T, dir string) []string {
 	t.Helper()
 	list, err := os.ReadDir(dir)
@@ -31,6 +47,7 @@ func entries(t *testing.T, dir string) []string {
 }
 
 func TestWriteCreatesTheFileAndItsDirectory(t *testing.T) {
+	umask(t, 0o022)
 	path := filepath.Join(t.TempDir(), "nested", "commands.json")
 	if err := Write(path, []byte("hello\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -64,6 +81,7 @@ func TestWriteReplacesAndLeavesNoTempBehind(t *testing.T) {
 }
 
 func TestWriteSetsTheModeItIsGiven(t *testing.T) {
+	umask(t, 0o022)
 	path := filepath.Join(t.TempDir(), "potato")
 	if err := Write(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
@@ -103,8 +121,6 @@ func TestWriteThroughASymlinkKeepsTheLink(t *testing.T) {
 	}
 }
 
-// A rename onto a directory fails after the temp file is written, which is the
-// latest a write can fail. The target stays as it was and the temp is gone.
 func TestAFailedWriteLeavesTheTargetAndNoTemp(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "commands.json")
@@ -127,5 +143,55 @@ func TestAFailedWriteLeavesTheTargetAndNoTemp(t *testing.T) {
 	}
 	if got := entries(t, dir); len(got) != 1 {
 		t.Errorf("directory holds %v, want only the target", got)
+	}
+}
+
+func TestWriteHonoursTheUmaskForANewFile(t *testing.T) {
+	umask(t, 0o077)
+	path := filepath.Join(t.TempDir(), "commands.json")
+	if err := Write(path, []byte("private"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := mode(t, path); got != 0o600 {
+		t.Errorf("mode = %v under umask 077, want 0600", got)
+	}
+}
+
+func TestWriteKeepsTheModeOfTheFileItReplaces(t *testing.T) {
+	umask(t, 0o022)
+	path := filepath.Join(t.TempDir(), "commands.json")
+	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(path, []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := mode(t, path); got != 0o600 {
+		t.Errorf("mode = %v, want the 0600 the file had", got)
+	}
+}
+
+func TestWriteThroughADanglingSymlinkCreatesWhatItPointsAt(t *testing.T) {
+	dotfiles := filepath.Join(t.TempDir(), "commands.json")
+	link := filepath.Join(t.TempDir(), "commands.json")
+	if err := os.Symlink(dotfiles, link); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Write(link, []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, dotfiles); got != "first" {
+		t.Errorf("the file the link points at = %q, want the write", got)
+	}
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("the dangling symlink was replaced by a regular file")
 	}
 }
