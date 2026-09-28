@@ -47,26 +47,27 @@ func indexRuneFrom(t []rune, r rune, from int) int {
 	return -1
 }
 
-// NameMatchIndices returns the greedy subsequence match positions of query
-// within name — the same walk the scorer takes — for match highlighting in
-// the TUI list. ok=false means no name match (the row may still have matched
-// via description/command) or an empty query.
-func NameMatchIndices(query, name string) (map[int]bool, bool) {
+// NameHits marks the runes of name that query's greedy subsequence match lands
+// on — the same walk the scorer takes — for match highlighting in the TUI
+// list. It has one entry per rune of name, so it indexes the way the name
+// does. It is nil for an empty query or one that misses the name; the row may
+// still have matched on its description or command.
+func NameHits(query, name string) []bool {
 	if strings.TrimSpace(query) == "" {
-		return nil, false
+		return nil
 	}
 	t := []rune(strings.ToLower(name))
-	indices := map[int]bool{}
+	hits := make([]bool, len(t))
 	ti := 0
 	for _, r := range strings.ToLower(query) {
 		found := indexRuneFrom(t, r, ti)
 		if found < 0 {
-			return nil, false
+			return nil
 		}
-		indices[found] = true
+		hits[found] = true
 		ti = found + 1
 	}
-	return indices, true
+	return hits
 }
 
 func Commands(commands []library.Command, s state.State, query string) []library.Command {

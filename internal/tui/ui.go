@@ -27,7 +27,6 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/luojiahai/potato/internal/placeholders"
 	"github.com/luojiahai/potato/internal/version"
 )
 
@@ -617,8 +616,4 @@ func wrapStyledHard(runs []run, width, caret int, on bool) ([]string, int) {
 	}
 	flush()
 	return append(out, line.String()), caretRow
-}
-
-func renderCommand(template string, values map[string]string) string {
-	return placeholders.Render(template, values)
 }

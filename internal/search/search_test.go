@@ -1,6 +1,7 @@
 package search
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/luojiahai/potato/internal/library"
@@ -95,32 +96,37 @@ func TestDescriptionHitOutranksCommandHit(t *testing.T) {
 	}
 }
 
-func TestNameMatchIndices(t *testing.T) {
-	indices, ok := NameMatchIndices("dpl", "deploy prod")
-	if !ok {
-		t.Fatal("expected a match")
-	}
-	for _, i := range []int{0, 2, 3} {
-		if !indices[i] {
-			t.Errorf("index %d not matched: %v", i, indices)
+// hitsAt reads a NameHits result back as the rune indices it marks.
+func hitsAt(hits []bool) []int {
+	at := []int{}
+	for i, hit := range hits {
+		if hit {
+			at = append(at, i)
 		}
 	}
-	if len(indices) != 3 {
-		t.Errorf("got %v, want exactly {0,2,3}", indices)
+	return at
+}
+
+func TestNameHits(t *testing.T) {
+	hits := NameHits("dpl", "deploy prod")
+	if len(hits) != len([]rune("deploy prod")) {
+		t.Fatalf("got %d entries, want one per rune of the name", len(hits))
+	}
+	if got := hitsAt(hits); !slices.Equal(got, []int{0, 2, 3}) {
+		t.Errorf("hits at %v, want [0 2 3]", got)
 	}
 }
 
-func TestNameMatchIndicesIsCaseInsensitive(t *testing.T) {
-	indices, ok := NameMatchIndices("DP", "deploy prod")
-	if !ok || !indices[0] || !indices[2] || len(indices) != 2 {
-		t.Errorf("got %v ok=%v, want {0,2}", indices, ok)
+func TestNameHitsIsCaseInsensitive(t *testing.T) {
+	if got := hitsAt(NameHits("DP", "deploy prod")); !slices.Equal(got, []int{0, 2}) {
+		t.Errorf("hits at %v, want [0 2]", got)
 	}
 }
 
-func TestNameMatchIndicesMisses(t *testing.T) {
+func TestNameHitsMisses(t *testing.T) {
 	for _, query := range []string{"zzz", "", "  "} {
-		if _, ok := NameMatchIndices(query, "deploy prod"); ok {
-			t.Errorf("query %q reported a match", query)
+		if hits := NameHits(query, "deploy prod"); hits != nil {
+			t.Errorf("query %q reported hits %v", query, hits)
 		}
 	}
 }

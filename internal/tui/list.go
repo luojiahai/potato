@@ -681,26 +681,17 @@ func placeholderRows(ps []placeholders.Placeholder, width int) []string {
 // nameRuns paints the subsequence match positions in the brand's brightest
 // gold. The name is matched whole and cut by the Layout, which cuts from the
 // right — so a hit that falls off the end simply has nothing left to paint.
-//
-// The positions arrive as a map keyed by rune index, holding one entry per
-// hit, so its length is the number of hits and not the number of runes. Never
-// guard the read with `i < len(matches)`, the length a []bool would have: that
-// admits only the first len(matches) runes of the name and drops every hit past
-// them, so a query matching anywhere but the front of a name lights less than
-// all of itself, and one whose first hit falls at or past len(matches) lights
-// nothing at all. A missing key reads false on its own; there is nothing to
-// guard.
 func nameRuns(query, name string) []run {
 	plain := titleStyle()
 	hit := hitStyle()
-	matches, ok := search.NameMatchIndices(query, name)
-	if !ok {
+	hits := search.NameHits(query, name)
+	if hits == nil {
 		return []run{{text: name, style: plain}}
 	}
-	out := make([]run, 0, len(name))
+	out := make([]run, 0, len(hits))
 	for i, r := range []rune(name) {
 		style := plain
-		if matches[i] {
+		if hits[i] {
 			style = hit
 		}
 		out = append(out, run{text: string(r), style: style})

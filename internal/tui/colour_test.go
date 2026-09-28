@@ -207,11 +207,11 @@ func truecolorFg(hex string) string {
 	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", r, g, b)
 }
 
-// Fuzzy-match hits are painted rune by rune from the positions search hands
-// back — a map keyed by rune index, one entry per hit. Nothing else in the
-// suite can see whether they land: the frame goldens are compared de-ANSI'd,
-// and TestViewCarriesTheBrandColours only asks whether highlightColor is on
-// the wire at all, which it is either way because Placeholders wear it too.
+// Fuzzy-match hits are painted rune by rune from the hits search hands back,
+// one entry per rune of the name. Nothing else in the suite can see whether
+// they land: the frame goldens are compared de-ANSI'd, and
+// TestViewCarriesTheBrandColours only asks whether highlightColor is on the
+// wire at all, which it is either way because Placeholders wear it too.
 // So this walks the seam itself and asks which runes came back lit.
 func TestEveryNameMatchIsHighlighted(t *testing.T) {
 	lit := hitStyle().GetForeground()
@@ -222,8 +222,8 @@ func TestEveryNameMatchIsHighlighted(t *testing.T) {
 		{"dp", "deploy prod"},  // one at the front, one past
 		{"tl", "tail logs"},
 	} {
-		want, ok := search.NameMatchIndices(tc.query, tc.name)
-		if !ok {
+		want := search.NameHits(tc.query, tc.name)
+		if want == nil {
 			t.Fatalf("%q does not match %q — the fixture is wrong", tc.query, tc.name)
 		}
 		runs := nameRuns(tc.query, tc.name)
