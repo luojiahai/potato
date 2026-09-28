@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -96,6 +97,45 @@ func TestCtrlYCopiesWithoutHandingOff(t *testing.T) {
 	}
 	if !strings.Contains(render(t, m), "Copied to clipboard") {
 		t.Error("no flash after copying")
+	}
+}
+
+// OSC 52 is what reaches a clipboard over SSH and inside tmux, so it goes out on
+// every copy — and through the program's own output, as every byte potato
+// writes to the terminal does, where it cannot land inside a frame being drawn.
+func TestCopySendsOSC52ThroughTheProgram(t *testing.T) {
+	m, _ := harness(t)
+	press(m, []string{"ports"})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl})
+
+	want := tea.SetClipboard("lsof -iTCP -sTCP:LISTEN")()
+	if got := sent(cmd); !slices.Contains(got, want) {
+		t.Errorf("^Y sent %v, want the clipboard message among them", got)
+	}
+}
+
+// sent runs cmd and every command batched inside it, and collects what each
+// sends at once. A timer — a flash's, the caret's blink — sleeps before it
+// answers, and is left to.
+func sent(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	answer := make(chan tea.Msg, 1)
+	go func() { answer <- cmd() }()
+	select {
+	case msg := <-answer:
+		batch, ok := msg.(tea.BatchMsg)
+		if !ok {
+			return []tea.Msg{msg}
+		}
+		var all []tea.Msg
+		for _, c := range batch {
+			all = append(all, sent(c)...)
+		}
+		return all
+	case <-time.After(50 * time.Millisecond):
+		return nil
 	}
 }
 
