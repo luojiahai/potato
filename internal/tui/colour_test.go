@@ -217,9 +217,9 @@ func TestEveryNameMatchIsHighlighted(t *testing.T) {
 	lit := hitStyle().GetForeground()
 	for _, tc := range []struct{ query, name string }{
 		{"li", "list ports"},   // hits at the front
-		{"port", "list ports"}, // hits past the number of hits
-		{"y", "deploy prod"},   // one hit, well past it
-		{"dp", "deploy prod"},  // one at the front, one past
+		{"port", "list ports"}, // hits at the end
+		{"y", "deploy prod"},   // one hit, mid-name
+		{"dp", "deploy prod"},  // one at the front, one mid-name
 		{"tl", "tail logs"},
 	} {
 		want := search.NameHits(tc.query, tc.name)
