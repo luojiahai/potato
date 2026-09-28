@@ -1,4 +1,4 @@
-// potato uninstall (spec §8): remove the rc line, delete the binary and
+// potato uninstall: remove the rc line, delete the binary and
 // generated init files, keep user data (--purge wipes everything).
 
 package update

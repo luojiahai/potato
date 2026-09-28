@@ -1,4 +1,4 @@
-// Package search is the fuzzy search over the Library (spec §3.1):
+// Package search is the fuzzy search over the Library:
 // subsequence match on name + description + command text, name hits weighted
 // highest, then description, then command. An empty query is MRU first
 // (State.LastUsedAt), never-used in file order.

@@ -1,4 +1,4 @@
-// Package tui is the potato TUI (spec §3): a fuzzy-search list with a detail
+// Package tui is the potato TUI: a fuzzy-search list with a detail
 // strip, a single-form arg screen with live preview, and in-app CRUD.
 //
 // It renders inline rather than on the alternate screen — a block of fixed

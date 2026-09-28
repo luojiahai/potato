@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Release build (spec §6.1): compile all four targets from one machine,
+# Release build: compile all four targets from one machine,
 # tar.gz each, and emit SHA256SUMS for install.sh / `potato update` to verify.
 #
 # The asset names are frozen: installed binaries resolve them by these exact

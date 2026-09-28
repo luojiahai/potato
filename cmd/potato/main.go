@@ -1,4 +1,4 @@
-// potato CLI (spec §5): the TUI by default (--out <file> carries the
+// potato CLI: the TUI by default (--out <file> carries the
 // selection back to the shell wrapper), plus import / init / update /
 // uninstall subcommands.
 package main
@@ -70,7 +70,7 @@ func runTUI(outFile string, hasOut bool) {
 	}
 
 	if hasOut {
-		// empty file = cancelled (spec §4.1)
+		// empty file = cancelled
 		if err := os.WriteFile(outFile, []byte(handoff), 0o644); err != nil {
 			die(err.Error())
 		}

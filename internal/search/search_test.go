@@ -7,7 +7,7 @@ import (
 	"github.com/luojiahai/potato/internal/state"
 )
 
-// Spec §3.1: match over name + description + command, name weighted highest,
+// Search matches over name + description + command, name weighted highest,
 // then description, then command. Empty query: MRU first (State keyed by id),
 // never-used follow in file (array) order.
 

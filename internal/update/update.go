@@ -1,4 +1,4 @@
-// Package update implements potato update (spec §8): CLI-only, latest-only.
+// Package update implements potato update: CLI-only, latest-only.
 // It verifies sha256 against the released SHA256SUMS with install.sh's rigor,
 // atomically renames over the running binary's realpath, and regenerates init
 // files. It never touches the rc.
@@ -135,7 +135,7 @@ func Run() error {
 		return err
 	}
 
-	// Atomic swap over the RUNNING binary's realpath (spec §8) — the
+	// Atomic swap over the RUNNING binary's realpath — the
 	// executable path, not the env-derived install dir, which may differ in
 	// this shell; stage next to the target first so the rename never crosses
 	// filesystems.

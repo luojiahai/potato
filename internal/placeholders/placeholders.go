@@ -1,4 +1,4 @@
-// Package placeholders handles {{name}} / {{name=default}} (spec §2).
+// Package placeholders handles {{name}} / {{name=default}}.
 // Anything else stays literal; substitution is verbatim — template authors do
 // their own quoting.
 package placeholders
@@ -85,7 +85,7 @@ func TemplateSegments(template string) []Segment {
 }
 
 // RenderSegments splits into literal/substituted runs so the live preview can
-// highlight the substituted values (spec §3.2).
+// highlight the substituted values.
 func RenderSegments(template string, values map[string]string) []Segment {
 	resolved := resolve(template, values)
 	out := []Segment{}

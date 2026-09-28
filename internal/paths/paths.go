@@ -1,5 +1,5 @@
-// Package paths locates potato's entire footprint under ~/.potato (spec
-// §6.2); POTATO_INSTALL overrides the root.
+// Package paths locates potato's entire footprint under ~/.potato;
+// POTATO_INSTALL overrides the root.
 package paths
 
 import (

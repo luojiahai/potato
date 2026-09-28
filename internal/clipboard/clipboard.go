@@ -1,4 +1,4 @@
-// Package clipboard implements Copy (spec §4.2): spawn the native clipboard
+// Package clipboard implements Copy: spawn the native clipboard
 // tool if present AND always emit OSC 52 — the only mechanism that works over
 // SSH and inside tmux.
 package clipboard
