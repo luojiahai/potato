@@ -26,28 +26,72 @@ import (
 
 func fixtureDeps() Deps {
 	description := func(s string) *string { return &s }
-	return Deps{
-		Library: library.Library{
-			Version: 2,
-			Commands: []library.Command{
-				{
-					ID: "id-deploy", Name: "deploy prod",
-					Description: description("Roll out to production"),
-					Template:    "ssh {{host=prod-1}} 'deploy.sh'",
-				},
-				{
-					ID: "id-ports", Name: "list ports",
-					Description: description("Show listening processes"),
-					Template:    "lsof -iTCP -sTCP:LISTEN",
-				},
-				{ID: "id-tail", Name: "tail logs", Template: "tail -f {{file}} | grep {{pattern=error}}"},
+	lib := library.Library{
+		Version: 2,
+		Commands: []library.Command{
+			{
+				ID: "id-deploy", Name: "deploy prod",
+				Description: description("Roll out to production"),
+				Template:    "ssh {{host=prod-1}} 'deploy.sh'",
 			},
+			{
+				ID: "id-ports", Name: "list ports",
+				Description: description("Show listening processes"),
+				Template:    "lsof -iTCP -sTCP:LISTEN",
+			},
+			{ID: "id-tail", Name: "tail logs", Template: "tail -f {{file}} | grep {{pattern=error}}"},
 		},
-		State: state.State{
-			"id-deploy": {LastUsedAt: time.Date(2026, 7, 24, 8, 0, 0, 0, time.UTC), Args: map[string]string{"host": "prod-7"}},
-		},
-		Now: func() time.Time { return time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC) },
 	}
+	st := state.State{
+		"id-deploy": {LastUsedAt: time.Date(2026, 7, 24, 8, 0, 0, 0, time.UTC), Args: map[string]string{"host": "prod-7"}},
+	}
+	deps, _ := onDisk(Deps{Now: func() time.Time { return time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC) }}, lib, st)
+	return deps
+}
+
+// disk stands in for commands.json and state.json. A test plays another potato
+// by assigning lib or st, and a file that cannot be written by setting its
+// fail field, which that file's every write then returns.
+type disk struct {
+	lib library.Library
+	st  state.State
+	// libraries and states are every value written, in order.
+	libraries []library.Library
+	states    []state.State
+
+	failLibraryWith error
+	failStateWith   error
+}
+
+func (d *disk) changeLibrary(change func(library.Library) (library.Library, error)) (library.Library, error) {
+	next, err := change(d.lib)
+	if err != nil {
+		return library.Library{}, err
+	}
+	if d.failLibraryWith != nil {
+		return library.Library{}, d.failLibraryWith
+	}
+	d.lib = next
+	d.libraries = append(d.libraries, next)
+	return next, nil
+}
+
+func (d *disk) changeState(change func(state.State) state.State) (state.State, error) {
+	next := change(d.st)
+	if d.failStateWith != nil {
+		return nil, d.failStateWith
+	}
+	d.st = next
+	d.states = append(d.states, next)
+	return next, nil
+}
+
+// onDisk opens deps on lib and st, held on a disk the TUI's changes go to.
+func onDisk(deps Deps, lib library.Library, st state.State) (Deps, *disk) {
+	d := &disk{lib: lib, st: st}
+	deps.Library, deps.State = lib, st
+	deps.ChangeLibrary, deps.ChangeState = d.changeLibrary, d.changeState
+	return deps, d
 }
 
 // press turns a scenario's key names into the messages the model consumes.
@@ -194,8 +238,7 @@ func TestFrames(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			deps := fixtureDeps()
 			if tc.lib != nil {
-				deps.Library = *tc.lib
-				deps.State = state.State{}
+				deps, _ = onDisk(deps, *tc.lib, state.State{})
 			}
 			m := New(deps)
 			m.SetSize(tc.columns, tc.rows)
@@ -301,9 +344,7 @@ func itoa(n int) string {
 // the renderer, so a truncation is only a diff against the frame before it,
 // and it passes its own test either way. The check has to be explicit here.
 func TestTheDetailStripShowsEveryPlaceholder(t *testing.T) {
-	deps := fixtureDeps()
-	deps.Library = longCommandLibrary()
-	deps.State = state.State{}
+	deps, _ := onDisk(fixtureDeps(), longCommandLibrary(), state.State{})
 	m := New(deps)
 	m.SetSize(80, 24)
 

@@ -55,15 +55,17 @@ func runTUI(outFile string, hasOut bool) {
 		die(err.Error())
 	}
 
-	// The saves hand their error back rather than swallowing it, so the TUI can
-	// say a write failed instead of flashing "Saved" over one that did not.
 	handoff, err := tui.Run(tui.Deps{
-		Library:     lib,
-		State:       state.Load(paths.State()),
-		SaveLibrary: func(lib library.Library) error { return library.Save(paths.Commands(), lib) },
-		SaveState:   func(s state.State) error { return state.Save(paths.State(), s) },
-		Copy:        clipboard.Copy,
-		Now:         time.Now,
+		Library: lib,
+		State:   state.Load(paths.State()),
+		ChangeLibrary: func(change func(library.Library) (library.Library, error)) (library.Library, error) {
+			return library.Change(paths.Commands(), change)
+		},
+		ChangeState: func(change func(state.State) state.State) (state.State, error) {
+			return state.Change(paths.State(), change)
+		},
+		Copy: clipboard.Copy,
+		Now:  time.Now,
 	})
 	if err != nil {
 		die(err.Error())

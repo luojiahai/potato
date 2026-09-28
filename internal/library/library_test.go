@@ -595,3 +595,91 @@ func TestSaveRefusesAnUnreadableLibrary(t *testing.T) {
 		})
 	}
 }
+
+// ---------- changing the file ----------
+
+// Two potatoes load the same file; the second one's change is applied to what
+// the first one wrote, not to the copy it loaded at launch.
+func TestChangeAppliesToTheFileNotTheCopyLoadedEarlier(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "commands.json")
+	if _, err := Change(file, func(lib Library) (Library, error) {
+		return Add(lib, Draft{Name: "stays", Template: "ls"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := Load(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Change(file, func(lib Library) (Library, error) {
+		return Add(lib, Draft{Name: "from elsewhere", Template: "pwd"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	id := stale.Commands[0].ID
+	written, err := Change(file, func(lib Library) (Library, error) {
+		return Update(lib, id, Draft{Name: "renamed", Template: "ls"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	onDisk, err := Load(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, command := range onDisk.Commands {
+		names = append(names, command.Name)
+	}
+	if strings.Join(names, ",") != "renamed,from elsewhere" {
+		t.Errorf("file holds %v, want [renamed from elsewhere]", names)
+	}
+	if len(written.Commands) != len(onDisk.Commands) {
+		t.Errorf("Change returned %d Commands, the file holds %d", len(written.Commands), len(onDisk.Commands))
+	}
+}
+
+func TestChangeThatRefusesLeavesTheFile(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "commands.json")
+	if _, err := Change(file, func(lib Library) (Library, error) {
+		return Add(lib, Draft{Name: "taken", Template: "ls"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Change(file, func(lib Library) (Library, error) {
+		return Add(lib, Draft{Name: "taken", Template: "pwd"})
+	}); err == nil {
+		t.Fatal("a change the Library refused reported success")
+	}
+	after, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("a refused change rewrote the file:\n%s", after)
+	}
+}
+
+// A file potato cannot read is not overwritten by a change made on top of
+// nothing: the change never runs.
+func TestChangeRefusesAFileItCannotRead(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "commands.json")
+	if err := os.WriteFile(file, []byte(`{"version": 3, "commands": []}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	if _, err := Change(file, func(lib Library) (Library, error) {
+		ran = true
+		return lib, nil
+	}); err == nil {
+		t.Fatal("a change to an unreadable file reported success")
+	}
+	if ran {
+		t.Error("the change ran against a Library that could not be loaded")
+	}
+}

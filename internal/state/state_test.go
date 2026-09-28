@@ -121,3 +121,21 @@ func TestSaveWritesSortedIndentedJSON(t *testing.T) {
 		t.Errorf("state.json =\n%s\nwant\n%s", got, want)
 	}
 }
+
+func TestChangeAppliesToTheFileNotTheCopyLoadedEarlier(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "state.json")
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := Change(file, func(s State) State { return RecordUse(s, "elsewhere", nil, now) }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Change(file, func(s State) State { return RecordUse(s, "here", nil, now) }); err != nil {
+		t.Fatal(err)
+	}
+	loaded := Load(file)
+	if _, ok := loaded["elsewhere"]; !ok {
+		t.Error("the other potato's use was written away")
+	}
+	if _, ok := loaded["here"]; !ok {
+		t.Error("this potato's use was not written")
+	}
+}

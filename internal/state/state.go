@@ -48,6 +48,17 @@ func Save(path string, s State) error {
 	return atomicfile.Write(path, b.Bytes(), 0o644)
 }
 
+// Change applies change to the State in the file as it is now and writes what
+// it returns — see library.Change for why a change goes to the file rather than
+// to the copy loaded at launch.
+func Change(path string, change func(State) State) (State, error) {
+	next := change(Load(path))
+	if err := Save(path, next); err != nil {
+		return nil, err
+	}
+	return next, nil
+}
+
 // RecordUse stamps the Command's last use and merges the supplied arguments
 // over whatever was remembered before.
 func RecordUse(s State, id string, args map[string]string, now time.Time) State {

@@ -9,6 +9,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -55,6 +56,20 @@ type editScreen struct {
 	tried bool
 	// discardArmed is an esc waiting for its second press. See update.
 	discardArmed bool
+	// notSaved is why the last save did not land, or "". It holds the warning
+	// slot until the form is edited, since the fix is usually in the form.
+	notSaved string
+}
+
+// fieldsOf is a Command as the form's fields hold it.
+func fieldsOf(command library.Command) [fieldCount]string {
+	var values [fieldCount]string
+	values[fieldName] = command.Name
+	values[fieldCommand] = command.Template
+	if command.Description != nil {
+		values[fieldDescription] = *command.Description
+	}
+	return values
 }
 
 func newEditScreen(m *Model, back screen, command *library.Command) *editScreen {
@@ -62,11 +77,7 @@ func newEditScreen(m *Model, back screen, command *library.Command) *editScreen 
 	var values [fieldCount]string
 	if command != nil {
 		s.id = command.ID
-		values[fieldName] = command.Name
-		values[fieldCommand] = command.Template
-		if command.Description != nil {
-			values[fieldDescription] = *command.Description
-		}
+		values = fieldsOf(*command)
 	}
 	s.initial = values
 	fields := make([]field, 0, fieldCount)
@@ -171,13 +182,20 @@ func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	// warned about.
 	if s.values() != before {
 		s.discardArmed = false
+		s.notSaved = ""
 	}
 	return cmd
 }
 
-// save hands the form's fields to the Library and goes back where it came from.
-// The trimming, the id, the slot and the empty-description rule are all the
-// Library's — this knows only which of the two verbs it is performing.
+// save hands the form's fields to the Library as it is on disk and goes back
+// where it came from. The trimming, the id, the slot and the empty-description
+// rule are all the Library's — this knows only which of the two verbs it is
+// performing, and what the Command looked like when the form opened.
+//
+// A save that does not land leaves the form open with everything typed in it,
+// and the reason in the warning slot: a write that failed, or another potato
+// having taken the name, changed the Command, or deleted it since the form
+// opened.
 func (s *editScreen) save(m *Model) tea.Cmd {
 	draft := library.Draft{
 		Name:        s.value(fieldName),
@@ -185,28 +203,37 @@ func (s *editScreen) save(m *Model) tea.Cmd {
 		Template:    s.value(fieldCommand),
 	}
 
-	var (
-		next library.Library
-		err  error
-	)
-	verb := "Saved"
-	if s.id == "" {
-		verb = "Added"
-		next, err = library.Add(m.lib, draft)
-	} else {
-		next, err = library.Update(m.lib, s.id, draft)
+	verb := "Added"
+	change := func(lib library.Library) (library.Library, error) { return library.Add(lib, draft) }
+	if s.id != "" {
+		verb = "Saved"
+		change = func(lib library.Library) (library.Library, error) {
+			if err := s.unchangedIn(lib); err != nil {
+				return library.Library{}, err
+			}
+			return library.Update(lib, s.id, draft)
+		}
 	}
-	if err != nil {
-		// problem() has already refused everything the Library refuses, so this
-		// is unreachable — but it is a refusal, and staying on the form with the
-		// reason on it is what a refusal looks like here.
-		s.tried = true
+	if err := m.changeLibrary(change); err != nil {
+		s.notSaved = err.Error()
 		return nil
 	}
-
-	saved := m.updateLibrary(next)
 	m.screen = s.back
-	return m.finish(verb, saved)
+	return m.flashDefault(verb)
+}
+
+// unchangedIn refuses to save over a Command that another potato has changed or
+// deleted since this form opened. Writing the form's fields over it would undo
+// that potato's edit without anyone seeing it go.
+func (s *editScreen) unchangedIn(lib library.Library) error {
+	current, ok := library.Find(lib, s.id)
+	if !ok {
+		return errors.New("deleted in another potato")
+	}
+	if fieldsOf(current) != s.initial {
+		return errors.New("changed in another potato — esc and edit it again")
+	}
+	return nil
 }
 
 func (s *editScreen) keys(*Model) []footerKey {
@@ -231,8 +258,12 @@ func (s *editScreen) view(m *Model) []string {
 	if warning == "" && s.tried {
 		warning = s.problem(m)
 	}
-	// An armed esc outranks both. It is the only warning here about the key the
-	// user is holding rather than about the form, and it is gone next keystroke.
+	if s.notSaved != "" {
+		warning = "Not saved: " + s.notSaved
+	}
+	// An armed esc outranks all of them. It is the only warning here about the
+	// key the user is holding rather than about the form, and it is gone next
+	// keystroke.
 	if s.discardArmed {
 		warning = "Unsaved changes — esc again to discard"
 	}
