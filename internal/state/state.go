@@ -7,8 +7,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"time"
+
+	"github.com/luojiahai/potato/internal/atomicfile"
 )
 
 type Command struct {
@@ -33,8 +34,9 @@ func Load(path string) State {
 	return s
 }
 
-// Save writes two-space-indented JSON with a trailing newline. encoding/json
-// sorts map keys, so the same State always writes the same bytes.
+// Save writes two-space-indented JSON with a trailing newline, through
+// atomicfile. encoding/json sorts map keys, so the same State always writes the
+// same bytes.
 func Save(path string, s State) error {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
@@ -43,10 +45,17 @@ func Save(path string, s State) error {
 	if err := enc.Encode(s); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+	return atomicfile.Write(path, b.Bytes(), 0o644)
+}
+
+// Change applies change to the State in the file as it is now and writes what
+// it returns.
+func Change(path string, change func(State) State) (State, error) {
+	next := change(Load(path))
+	if err := Save(path, next); err != nil {
+		return nil, err
 	}
-	return os.WriteFile(path, b.Bytes(), 0o644)
+	return next, nil
 }
 
 // RecordUse stamps the Command's last use and merges the supplied arguments

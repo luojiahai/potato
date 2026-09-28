@@ -26,16 +26,14 @@ import (
 
 // Deps are the effects the TUI needs, injected so tests can observe them.
 //
-// The two saves report failure, and every caller must surface it: a discarded
-// error makes a Library that failed to write look exactly like one that wrote,
-// and the edit screen flashes "Saved" on the strength of a call it could not
-// see fail. library.Save also refuses a Library it would not be able to read
-// back, so a save has a second way to fail that the user has to hear about.
+// ChangeLibrary and ChangeState apply a change to the file as it is now and
+// return what they wrote. A change that is refused and a write that fails both
+// come back as the error.
 type Deps struct {
-	Library     library.Library
-	State       state.State
-	SaveLibrary func(library.Library) error
-	SaveState   func(state.State) error
+	Library       library.Library
+	State         state.State
+	ChangeLibrary func(func(library.Library) (library.Library, error)) (library.Library, error)
+	ChangeState   func(func(state.State) state.State) (state.State, error)
 	// Copy reports whether a native clipboard tool took the text. It is false
 	// when only OSC 52 was sent, which nothing can confirm, and the flash the
 	// user reads is phrased from it.
@@ -240,31 +238,38 @@ func (m *Model) quit() tea.Cmd {
 }
 
 func (m *Model) rememberUse(id string, args map[string]string) error {
-	return m.updateState(state.RecordUse(m.st, id, args, m.deps.Now()))
+	now := m.deps.Now()
+	return m.changeState(func(s state.State) state.State { return state.RecordUse(s, id, args, now) })
 }
 
-// updateLibrary and updateState adopt the new value and write it out, reporting
-// what the write did rather than flashing it. Raising the flash is finish's, so
-// an action that writes both files raises exactly one — see finish.
-//
-// The in-memory value is kept either way. A write that failed has not lost the
-// user their edit, and rolling it back would throw away what they typed to
-// report a problem with the disk — so the frame shows the change and the flash
-// says it is not saved yet.
-func (m *Model) updateLibrary(next library.Library) error {
+// changeLibrary applies a change to the file and adopts the Library the file
+// then holds, reporting the error rather than flashing it. A change that ran
+// and did not land leaves the file as it was read, and that is adopted too: a
+// form reopened after a refusal starts from what another potato saved, not
+// from the copy that was refused.
+func (m *Model) changeLibrary(change func(library.Library) (library.Library, error)) error {
+	var read *library.Library
+	next, err := m.deps.ChangeLibrary(func(lib library.Library) (library.Library, error) {
+		read = &lib
+		return change(lib)
+	})
+	if err != nil {
+		if read != nil {
+			m.lib = *read
+		}
+		return err
+	}
 	m.lib = next
-	if m.deps.SaveLibrary == nil {
-		return nil
-	}
-	return m.deps.SaveLibrary(next)
+	return nil
 }
 
-func (m *Model) updateState(next state.State) error {
-	m.st = next
-	if m.deps.SaveState == nil {
-		return nil
+func (m *Model) changeState(change func(state.State) state.State) error {
+	next, err := m.deps.ChangeState(change)
+	if err != nil {
+		return err
 	}
-	return m.deps.SaveState(next)
+	m.st = next
+	return nil
 }
 
 // finish reports an action's outcome: the first failure among the writes it
@@ -272,11 +277,9 @@ func (m *Model) updateState(next state.State) error {
 //
 // It takes errors rather than the flashes for them because setting a flash is a
 // side effect, not a value — m.flash is assigned the moment setFlash is called.
-// An action that writes both files and has both fail would otherwise leave the
-// *last* failure's text on screen while returning the *first* one's timer, and
-// on a delete that means being told about state.json — the disposable cache —
-// while commands.json is the file that did not get written. One failure is
-// chosen here, then raised, so the text and the timer are always the same one.
+// Raising one flash per write would leave the last one's text on screen under
+// the first one's timer. One failure is chosen here, then raised, so the text
+// and the timer are always the same one.
 //
 // A failure outlasts the ordinary flash: "Deleted 'x'" is a confirmation you can
 // miss without cost, and this is not.

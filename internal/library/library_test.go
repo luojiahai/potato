@@ -203,6 +203,35 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSaveWritesThroughASymlinkedLibrary(t *testing.T) {
+	dotfiles := filepath.Join(t.TempDir(), "commands.json")
+	if err := os.WriteFile(dotfiles, []byte(Serialize(Empty())), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "commands.json")
+	if err := os.Symlink(dotfiles, link); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Save(link, add(t, Empty(), Draft{Name: "kept", Template: "ls"})); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("the save replaced the symlink with a copy")
+	}
+	lib, err := Load(dotfiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lib.Commands) != 1 || lib.Commands[0].Name != "kept" {
+		t.Errorf("the linked file = %+v, want the saved Command", lib.Commands)
+	}
+}
+
 // ---------- the write interface ----------
 
 func add(t *testing.T, lib Library, d Draft) Library {
@@ -562,5 +591,87 @@ func TestSaveRefusesAnUnreadableLibrary(t *testing.T) {
 				t.Error("a refused Save still touched the disk")
 			}
 		})
+	}
+}
+
+func TestChangeAppliesToTheFileNotTheCopyLoadedEarlier(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "commands.json")
+	if _, err := Change(file, func(lib Library) (Library, error) {
+		return Add(lib, Draft{Name: "stays", Template: "ls"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := Load(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Change(file, func(lib Library) (Library, error) {
+		return Add(lib, Draft{Name: "from elsewhere", Template: "pwd"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	id := stale.Commands[0].ID
+	written, err := Change(file, func(lib Library) (Library, error) {
+		return Update(lib, id, Draft{Name: "renamed", Template: "ls"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	onDisk, err := Load(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, command := range onDisk.Commands {
+		names = append(names, command.Name)
+	}
+	if strings.Join(names, ",") != "renamed,from elsewhere" {
+		t.Errorf("file holds %v, want [renamed from elsewhere]", names)
+	}
+	if len(written.Commands) != len(onDisk.Commands) {
+		t.Errorf("Change returned %d Commands, the file holds %d", len(written.Commands), len(onDisk.Commands))
+	}
+}
+
+func TestChangeThatRefusesLeavesTheFile(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "commands.json")
+	if _, err := Change(file, func(lib Library) (Library, error) {
+		return Add(lib, Draft{Name: "taken", Template: "ls"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Change(file, func(lib Library) (Library, error) {
+		return Add(lib, Draft{Name: "taken", Template: "pwd"})
+	}); err == nil {
+		t.Fatal("a change the Library refused reported success")
+	}
+	after, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("a refused change rewrote the file:\n%s", after)
+	}
+}
+
+func TestChangeRefusesAFileItCannotRead(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "commands.json")
+	if err := os.WriteFile(file, []byte(`{"version": 3, "commands": []}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	if _, err := Change(file, func(lib Library) (Library, error) {
+		ran = true
+		return lib, nil
+	}); err == nil {
+		t.Fatal("a change to an unreadable file reported success")
+	}
+	if ran {
+		t.Error("the change ran against a Library that could not be loaded")
 	}
 }

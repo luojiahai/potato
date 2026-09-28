@@ -172,8 +172,13 @@ func (s *listScreen) delete(m *Model) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	saved := m.updateLibrary(library.Remove(m.lib, command.ID))
-	forgotten := m.updateState(state.Forget(m.st, command.ID))
+	saved := m.changeLibrary(func(lib library.Library) (library.Library, error) {
+		return library.Remove(lib, command.ID), nil
+	})
+	var forgotten error
+	if saved == nil {
+		forgotten = m.changeState(func(st state.State) state.State { return state.Forget(st, command.ID) })
+	}
 	return m.finish(fmt.Sprintf("Deleted '%s'", command.Name), saved, forgotten)
 }
 

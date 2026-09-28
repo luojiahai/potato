@@ -15,33 +15,15 @@ import (
 // what reaches State. Identity is the Command id; a rename keeps id + slot.
 
 type recorder struct {
-	libraries []library.Library
-	states    []state.State
-	copied    []string
-	// failWith is what both saves return, so a test can be the adapter that
-	// cannot write. The value is still recorded — a failed save is one that was
-	// attempted.
-	failWith error
-	// failStateWith overrides failWith for the State write alone, so a test can
-	// tell the two failures apart when an action writes both files and both fail.
-	failStateWith error
+	*disk
+	copied []string
 }
 
 func harness(t *testing.T) (*Model, *recorder) {
 	t.Helper()
-	rec := &recorder{}
-	deps := fixtureDeps()
-	deps.SaveLibrary = func(lib library.Library) error {
-		rec.libraries = append(rec.libraries, lib)
-		return rec.failWith
-	}
-	deps.SaveState = func(s state.State) error {
-		rec.states = append(rec.states, s)
-		if rec.failStateWith != nil {
-			return rec.failStateWith
-		}
-		return rec.failWith
-	}
+	fixture := fixtureDeps()
+	deps, d := onDisk(fixture, fixture.Library, fixture.State)
+	rec := &recorder{disk: d}
 	// true stands in for a native clipboard tool that took the text, which is the
 	// path the "Copied to clipboard" assertions are about.
 	deps.Copy = func(text string) bool {
@@ -179,23 +161,133 @@ func TestEditSavesTheRenamedName(t *testing.T) {
 	}
 }
 
-// A save that failed must not be reported as one that worked. The edit is kept
-// so nothing the user typed is lost, and the flash says it is not on disk.
-func TestAFailedSaveSaysSoInsteadOfFlashingSaved(t *testing.T) {
+func TestAFailedSaveKeepsTheFormAndSaysWhy(t *testing.T) {
 	m, rec := harness(t)
-	rec.failWith = errors.New("read-only file system")
+	rec.failLibraryWith = errors.New("read-only file system")
 	press(m, []string{"ctrl+n", "doomed", "tab", "tab", "echo x", "enter"})
 
 	frame := render(t, m)
 	if strings.Contains(frame, "Added") {
 		t.Errorf("a failed save flashed success:\n%s", frame)
 	}
-	if !strings.Contains(frame, "Not saved") || !strings.Contains(frame, "read-only file system") {
+	if !strings.Contains(frame, "Not saved: read-only file system") {
 		t.Errorf("the failure is not reported:\n%s", frame)
 	}
-	// the edit survives in memory, so the user can retry rather than retype
-	if _, ok := findByName(m.lib, "doomed"); !ok {
-		t.Error("a failed save also threw away the edit")
+	edit, ok := m.screen.(*editScreen)
+	if !ok {
+		t.Fatalf("a failed save left the form for %T", m.screen)
+	}
+	if got := edit.value(fieldName); got != "doomed" {
+		t.Errorf("the name field holds %q after a failed save, want what was typed", got)
+	}
+	if _, ok := findByName(m.lib, "doomed"); ok {
+		t.Error("the list was handed a Command that is not on disk")
+	}
+
+	rec.failLibraryWith = nil
+	press(m, []string{"enter"})
+	if _, ok := findByName(rec.lib, "doomed"); !ok {
+		t.Fatal("the retry did not save")
+	}
+	if _, ok := m.screen.(*listScreen); !ok {
+		t.Errorf("a save that landed stayed on %T", m.screen)
+	}
+}
+
+func TestAFailedSaveShowsTheWholeReason(t *testing.T) {
+	m, rec := harness(t)
+	rec.failLibraryWith = errors.New("write /home/someone-with-a-long-name/.config/dotfiles/potato/commands.json: permission denied")
+	press(m, []string{"ctrl+n", "doomed", "tab", "tab", "echo x", "enter"})
+
+	if frame := render(t, m); !strings.Contains(frame, "permission denied") {
+		t.Errorf("the reason was cut off:\n%s", frame)
+	}
+}
+
+func TestAnotherPotatosCommandSurvivesThisOnesDelete(t *testing.T) {
+	m, rec := harness(t)
+	elsewhere, err := library.Add(rec.lib, library.Draft{Name: "from elsewhere", Template: "echo hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.lib = elsewhere
+
+	press(m, []string{"ctrl+x", "y"})
+	if _, ok := library.Find(rec.lib, "id-deploy"); ok {
+		t.Error("the delete did not land")
+	}
+	if _, ok := findByName(rec.lib, "from elsewhere"); !ok {
+		t.Error("the other potato's Command was written away")
+	}
+	if _, ok := findByName(m.lib, "from elsewhere"); !ok {
+		t.Error("the list is not showing the Library it wrote")
+	}
+}
+
+func TestAnEditRefusedForAStaleCopySucceedsWhenReopened(t *testing.T) {
+	m, rec := harness(t)
+	elsewhere, err := library.Update(rec.lib, "id-deploy", library.Draft{Name: "deploy prod", Template: "ssh {{host=prod-2}} 'deploy.sh'"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.lib = elsewhere
+
+	press(m, []string{"ctrl+o", "ctrl+u", "renamed", "enter"})
+	if frame := render(t, m); !strings.Contains(frame, "changed in another potato") {
+		t.Fatalf("the save against a stale copy was not refused:\n%s", frame)
+	}
+	press(m, []string{"esc", "esc", "ctrl+o"})
+	edit, ok := m.screen.(*editScreen)
+	if !ok {
+		t.Fatalf("ctrl+o opened %T, want the editor", m.screen)
+	}
+	if got := edit.value(fieldCommand); got != "ssh {{host=prod-2}} 'deploy.sh'" {
+		t.Errorf("the reopened form holds %q, want the other potato's version", got)
+	}
+	press(m, []string{"ctrl+u", "renamed", "enter"})
+	if command, _ := library.Find(rec.lib, "id-deploy"); command.Name != "renamed" {
+		t.Errorf("the save after reopening did not land: %+v", command)
+	}
+}
+
+func TestAnEditRefusesToOverwriteAnotherPotatosChange(t *testing.T) {
+	for name, tc := range map[string]struct {
+		elsewhere func(library.Library) library.Library
+		want      string
+	}{
+		"changed": {
+			elsewhere: func(lib library.Library) library.Library {
+				next, err := library.Update(lib, "id-deploy", library.Draft{Name: "deploy prod", Template: "ssh {{host=prod-2}} 'deploy.sh'"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return next
+			},
+			want: "changed in another potato",
+		},
+		"deleted": {
+			elsewhere: func(lib library.Library) library.Library { return library.Remove(lib, "id-deploy") },
+			want:      "deleted in another potato",
+		},
+	} {
+		m, rec := harness(t)
+		press(m, []string{"ctrl+o"})
+		rec.lib = tc.elsewhere(rec.lib)
+		before := rec.lib
+
+		press(m, []string{"ctrl+u", "renamed", "enter"})
+		if _, still := m.screen.(*editScreen); !still {
+			t.Errorf("%s: the refused save left the form for %T", name, m.screen)
+		}
+		if frame := render(t, m); !strings.Contains(frame, tc.want) {
+			t.Errorf("%s: the form does not say why:\n%s", name, frame)
+		}
+		if len(rec.libraries) != 0 {
+			t.Errorf("%s: the form's fields were written over the other potato's", name)
+		}
+		if library.Serialize(rec.lib) != library.Serialize(before) {
+			t.Errorf("%s: the file changed under a refused save", name)
+		}
 	}
 }
 
@@ -532,8 +624,7 @@ func TestSearchFieldNeverLosesALetter(t *testing.T) {
 // An empty Library has nothing to search and one thing to do, and the panel
 // filling the empty list says which chord does it.
 func TestAnEmptyLibraryOffersTheAddChord(t *testing.T) {
-	deps := fixtureDeps()
-	deps.Library = emptyLibrary()
+	deps, _ := onDisk(fixtureDeps(), emptyLibrary(), state.State{})
 	m := New(deps)
 	m.SetSize(80, 24)
 
@@ -599,15 +690,9 @@ func TestDeleteAlsoForgetsTheCommandsState(t *testing.T) {
 	}
 }
 
-// A delete writes both files, and when both fail the Library's failure is the
-// one the user is shown: commands.json is their data, state.json is a cache
-// CONTEXT.md calls safe to delete. Raising each flash as its write returned put
-// the *last* failure's text on screen — so the report named the cache and left
-// the user thinking their Command was gone.
-func TestADeleteThatFailsBothWritesReportsTheLibraryNotTheCache(t *testing.T) {
+func TestADeleteThatFailsLeavesTheCommandAndItsState(t *testing.T) {
 	m, rec := harness(t)
-	rec.failWith = errors.New("commands.json is read-only")
-	rec.failStateWith = errors.New("state.json is read-only")
+	rec.failLibraryWith = errors.New("commands.json is read-only")
 	press(m, []string{"ctrl+x", "y"})
 
 	frame := render(t, m)
@@ -615,9 +700,12 @@ func TestADeleteThatFailsBothWritesReportsTheLibraryNotTheCache(t *testing.T) {
 		t.Errorf("a delete that wrote nothing flashed success:\n%s", frame)
 	}
 	if !strings.Contains(frame, "commands.json is read-only") {
-		t.Errorf("the Library's failure is not the one reported:\n%s", frame)
+		t.Errorf("the Library's failure is not reported:\n%s", frame)
 	}
-	if strings.Contains(frame, "state.json is read-only") {
-		t.Errorf("the cache's failure won over the Library's:\n%s", frame)
+	if _, ok := library.Find(m.lib, "id-deploy"); !ok {
+		t.Error("the list dropped a Command that is still on disk")
+	}
+	if len(rec.states) != 0 {
+		t.Error("State was written for a delete that did not happen")
 	}
 }

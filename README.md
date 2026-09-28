@@ -50,7 +50,7 @@ A command that already contains newlines, whether hand-written into the JSON or 
 
 ### Your library
 
-Your commands live in one hand-editable JSON file, `~/.potato/commands.json`. Copying that file is how you share or back up a library; there is no separate export. Beside it, `~/.potato/state.json` caches last-used times and last argument values. It is disposable, and it never travels with the library.
+Your commands live in one hand-editable JSON file, `~/.potato/commands.json`. Copying that file is how you share or back up a library; there is no separate export. It can be a symlink, into a dotfiles repo say, and potato writes through the link rather than replacing it. Beside it, `~/.potato/state.json` caches last-used times and last argument values. It is disposable, and it never travels with the library.
 
 ```json
 {
@@ -66,7 +66,7 @@ Your commands live in one hand-editable JSON file, `~/.potato/commands.json`. Co
 }
 ```
 
-`id` is what potato tracks a command by, so a rename keeps its history; it only has to be a non-empty string, unique in the file. `name` must be unique too — the edit form refuses a clash rather than shadowing the command you already had. `description` is optional, and any field potato does not know about is carried through untouched. A file potato cannot parse stops it with the reason rather than being overwritten, and the writes it does make go through a temp file and a rename, so a failed one leaves the library you had.
+`id` is what potato tracks a command by, so a rename keeps its history; it only has to be a non-empty string, unique in the file. `name` must be unique too — the edit form refuses a clash rather than shadowing the command you already had. `description` is optional, and any field potato does not know about is carried through untouched. A file potato cannot parse stops it with the reason rather than being overwritten, and the writes it does make go through a temp file and a rename, so a failed one leaves the library you had. Each change is applied to the file as it is when potato saves, not to the copy it opened with, so a potato left open does not overwrite what another one saved in the meantime.
 
 ```sh
 potato import <file|->              # merge another library into yours. On a name
