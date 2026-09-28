@@ -43,7 +43,8 @@ func run(t *testing.T, args []string, home string, stdin string) result {
 		home = t.TempDir()
 	}
 	cmd := exec.Command(binary, args...)
-	cmd.Env = append(os.Environ(), "POTATO_INSTALL="+home)
+	// HOME too, so nothing a test runs can reach the rc files of whoever runs it.
+	cmd.Env = append(os.Environ(), "POTATO_INSTALL="+home, "HOME="+home)
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}
@@ -300,8 +301,73 @@ func TestUnknownCommandPrintsUsageAndExitsOne(t *testing.T) {
 	if !strings.Contains(got.stderr, "unknown command 'nope'") {
 		t.Errorf("stderr = %q", got.stderr)
 	}
-	if !strings.Contains(got.stdout, "usage:") {
-		t.Errorf("stdout = %q", got.stdout)
+	if !strings.Contains(got.stderr, "usage:") {
+		t.Errorf("stderr = %q, want the usage with the error", got.stderr)
+	}
+	if got.stdout != "" {
+		t.Errorf("stdout = %q, want nothing on a usage error", got.stdout)
+	}
+}
+
+// A mistyped flag is refused before anything is written. Read as a file name
+// or dropped, `--overide` would merge where the user asked to replace.
+func TestImportRefusesWhatItDoesNotUnderstand(t *testing.T) {
+	incoming := filepath.Join(t.TempDir(), "theirs.json")
+	writeFile(t, incoming, v2(command{ID: "t1", Name: "theirs", Template: "echo t"}))
+	for _, args := range [][]string{
+		{"import", incoming, "--overide"},
+		{"import", incoming, incoming},
+		{"import", "--merge", "--override", incoming},
+		{"import"},
+	} {
+		home := t.TempDir()
+		writeFile(t, filepath.Join(home, "commands.json"), v2(command{ID: "o1", Name: "mine", Template: "ls"}))
+
+		got := run(t, args, home, "")
+		if got.exitCode == 0 {
+			t.Errorf("%v: exit 0, want a refusal", args)
+		}
+		if !strings.Contains(got.stderr, "usage: potato import") {
+			t.Errorf("%v: stderr = %q, want the usage", args, got.stderr)
+		}
+		if lib := readLib(t, home); len(lib.Commands) != 1 || lib.Commands[0].Name != "mine" {
+			t.Errorf("%v: the library was changed: %+v", args, lib.Commands)
+		}
+	}
+}
+
+// uninstall deletes things, so a flag it does not know stops it before it
+// starts — `--prge` must not quietly uninstall without purging.
+func TestUninstallRefusesAnUnknownFlag(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".zshrc"), "source "+home+"/init.zsh\n")
+	if err := os.MkdirAll(filepath.Join(home, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(home, "bin", "potato"), "binary")
+
+	got := run(t, []string{"uninstall", "--prge"}, home, "")
+	if got.exitCode == 0 {
+		t.Fatal("exit 0, want a refusal")
+	}
+	if !strings.Contains(got.stderr, "usage: potato uninstall [--purge]") {
+		t.Errorf("stderr = %q", got.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(home, "bin", "potato")); err != nil {
+		t.Errorf("the binary was removed: %v", err)
+	}
+	if rc, _ := os.ReadFile(filepath.Join(home, ".zshrc")); !strings.Contains(string(rc), "init.zsh") {
+		t.Error("the rc line was removed")
+	}
+}
+
+func TestUpdateTakesNoArguments(t *testing.T) {
+	got := run(t, []string{"update", "--force"}, "", "")
+	if got.exitCode == 0 {
+		t.Fatal("exit 0, want a refusal")
+	}
+	if !strings.Contains(got.stderr, "usage: potato update") {
+		t.Errorf("stderr = %q", got.stderr)
 	}
 }
 

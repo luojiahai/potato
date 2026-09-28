@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/luojiahai/potato/internal/paths"
@@ -33,8 +32,7 @@ func RemoveInitLines(content string, needles []string) string {
 	return strings.Join(kept, "\n")
 }
 
-func RunUninstall(args []string) error {
-	purge := slices.Contains(args, "--purge")
+func RunUninstall(purge bool) error {
 	needles := []string{".potato/init.", filepath.Join(paths.Potato(), "init.")}
 
 	home, err := os.UserHomeDir()
