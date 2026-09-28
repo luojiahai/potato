@@ -79,7 +79,7 @@ potato uninstall [--purge]          # remove potato, keeping your data unless --
 
 ## Develop
 
-Go 1.26.5 or newer. The TUI is built on [Bubble Tea](https://github.com/charmbracelet/bubbletea).
+Go 1.26.6 or newer. The TUI is built on [Bubble Tea](https://github.com/charmbracelet/bubbletea).
 
 ```sh
 go run ./cmd/potato     # run the TUI from source
