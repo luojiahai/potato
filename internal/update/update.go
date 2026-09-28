@@ -6,6 +6,7 @@ package update
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,7 +18,9 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
+	"github.com/luojiahai/potato/internal/atomicfile"
 	"github.com/luojiahai/potato/internal/paths"
 	"github.com/luojiahai/potato/internal/shell"
 	"github.com/luojiahai/potato/internal/version"
@@ -51,8 +54,13 @@ func TargetTriple(goos, goarch string) (string, error) {
 	return "", fmt.Errorf("unsupported platform: %s-%s", goos, goarch)
 }
 
+// requestTimeout bounds each request, so a connection that stalls ends in an
+// error rather than a hang. It is sized for the release tarball on a slow link.
+const requestTimeout = 5 * time.Minute
+
 func latestTag() (string, error) {
 	client := &http.Client{
+		Timeout:       requestTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	res, err := client.Get(fmt.Sprintf("https://github.com/%s/releases/latest", Repo))
@@ -69,7 +77,8 @@ func latestTag() (string, error) {
 }
 
 func download(url string) ([]byte, error) {
-	res, err := http.Get(url)
+	client := &http.Client{Timeout: requestTimeout}
+	res, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -121,24 +130,14 @@ func Run() error {
 		return fmt.Errorf("sha256 mismatch for %s: expected %s, got %s", asset, expected, actual)
 	}
 
-	work, err := os.MkdirTemp("", "potato-update-")
+	binary, err := extractBinary(archive)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(work)
 
-	extracted := filepath.Join(work, "potato")
-	if err := extractBinary(archive, extracted); err != nil {
-		return err
-	}
-	if err := os.Chmod(extracted, 0o755); err != nil {
-		return err
-	}
-
-	// Atomic swap over the RUNNING binary's realpath — the
-	// executable path, not the env-derived install dir, which may differ in
-	// this shell; stage next to the target first so the rename never crosses
-	// filesystems.
+	// The swap goes over the running binary's realpath — the executable path,
+	// not the env-derived install dir, which may differ in this shell.
+	// atomicfile stages beside it, so the rename never crosses filesystems.
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -147,14 +146,7 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	staged := filepath.Join(filepath.Dir(target), ".potato.new")
-	if err := copyFile(extracted, staged); err != nil {
-		return err
-	}
-	if err := os.Chmod(staged, 0o755); err != nil {
-		return err
-	}
-	if err := os.Rename(staged, target); err != nil {
+	if err := atomicfile.Write(target, binary, 0o755); err != nil {
 		return err
 	}
 	if err := shell.WriteInitFiles(paths.Bin(), paths.Potato()); err != nil {
@@ -165,38 +157,23 @@ func Run() error {
 }
 
 // extractBinary pulls the single `potato` entry out of the release tarball.
-func extractBinary(archive []byte, dest string) error {
-	gz, err := gzip.NewReader(strings.NewReader(string(archive)))
+func extractBinary(archive []byte) ([]byte, error) {
+	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
-		return fmt.Errorf("tar failed: %w", err)
+		return nil, fmt.Errorf("tar failed: %w", err)
 	}
 	defer gz.Close()
 	reader := tar.NewReader(gz)
 	for {
 		header, err := reader.Next()
 		if err == io.EOF {
-			return fmt.Errorf("tar failed: no potato binary in the archive")
+			return nil, fmt.Errorf("tar failed: no potato binary in the archive")
 		}
 		if err != nil {
-			return fmt.Errorf("tar failed: %w", err)
+			return nil, fmt.Errorf("tar failed: %w", err)
 		}
-		if filepath.Base(header.Name) != "potato" || header.Typeflag != tar.TypeReg {
-			continue
+		if filepath.Base(header.Name) == "potato" && header.Typeflag == tar.TypeReg {
+			return io.ReadAll(reader)
 		}
-		out, err := os.Create(dest)
-		if err != nil {
-			return err
-		}
-		defer out.Close()
-		_, err = io.Copy(out, reader)
-		return err
 	}
-}
-
-func copyFile(from, to string) error {
-	data, err := os.ReadFile(from)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(to, data, 0o755)
 }

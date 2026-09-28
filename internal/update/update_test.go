@@ -1,6 +1,9 @@
 package update
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"strings"
 	"testing"
 )
@@ -58,5 +61,48 @@ func TestRemoveInitLinesLeavesOtherRcsAlone(t *testing.T) {
 	rc := "# nothing potato here\n"
 	if got := RemoveInitLines(rc, []string{".potato/init."}); got != rc {
 		t.Errorf("got %q, want it unchanged", got)
+	}
+}
+
+// tarball builds a release-shaped .tar.gz from name → contents.
+func tarball(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for name, body := range files {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestExtractBinaryFindsThePotatoEntry(t *testing.T) {
+	archive := tarball(t, map[string]string{"README": "not me", "potato": "the binary"})
+	got, err := extractBinary(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "the binary" {
+		t.Errorf("extracted %q, want the potato entry", got)
+	}
+}
+
+func TestExtractBinaryRefusesAnArchiveWithoutOne(t *testing.T) {
+	if _, err := extractBinary(tarball(t, map[string]string{"README": "no binary here"})); err == nil {
+		t.Error("an archive with no potato entry was accepted")
+	}
+	if _, err := extractBinary([]byte("not a tarball")); err == nil {
+		t.Error("bytes that are not a tarball were accepted")
 	}
 }
