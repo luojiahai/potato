@@ -49,13 +49,9 @@ func fixtureDeps() Deps {
 	return deps
 }
 
-// disk stands in for commands.json and state.json. A test plays another potato
-// by assigning lib or st, and a file that cannot be written by setting its
-// fail field, which that file's every write then returns.
 type disk struct {
-	lib library.Library
-	st  state.State
-	// libraries and states are every value written, in order.
+	lib       library.Library
+	st        state.State
 	libraries []library.Library
 	states    []state.State
 
@@ -86,7 +82,6 @@ func (d *disk) changeState(change func(state.State) state.State) (state.State, e
 	return next, nil
 }
 
-// onDisk opens deps on lib and st, held on a disk the TUI's changes go to.
 func onDisk(deps Deps, lib library.Library, st state.State) (Deps, *disk) {
 	d := &disk{lib: lib, st: st}
 	deps.Library, deps.State = lib, st

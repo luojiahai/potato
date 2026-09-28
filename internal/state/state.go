@@ -49,8 +49,7 @@ func Save(path string, s State) error {
 }
 
 // Change applies change to the State in the file as it is now and writes what
-// it returns — see library.Change for why a change goes to the file rather than
-// to the copy loaded at launch.
+// it returns.
 func Change(path string, change func(State) State) (State, error) {
 	next := change(Load(path))
 	if err := Save(path, next); err != nil {

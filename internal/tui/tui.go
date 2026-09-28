@@ -26,11 +26,9 @@ import (
 
 // Deps are the effects the TUI needs, injected so tests can observe them.
 //
-// ChangeLibrary and ChangeState apply a change to the file as it is now, which
-// another potato may have written since this one was handed Library and State,
-// and return what they wrote. A change that is refused and a write that fails
-// both come back as the error, and every caller must surface it: a discarded
-// error makes a Library that failed to write look exactly like one that wrote.
+// ChangeLibrary and ChangeState apply a change to the file as it is now and
+// return what they wrote. A change that is refused and a write that fails both
+// come back as the error.
 type Deps struct {
 	Library       library.Library
 	State         state.State

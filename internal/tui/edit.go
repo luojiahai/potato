@@ -56,12 +56,9 @@ type editScreen struct {
 	tried bool
 	// discardArmed is an esc waiting for its second press. See update.
 	discardArmed bool
-	// notSaved is why the last save did not land, or "". It holds the warning
-	// slot until the form is edited, since the fix is usually in the form.
-	notSaved string
+	notSaved     string
 }
 
-// fieldsOf is a Command as the form's fields hold it.
 func fieldsOf(command library.Command) [fieldCount]string {
 	var values [fieldCount]string
 	values[fieldName] = command.Name
@@ -187,15 +184,10 @@ func (s *editScreen) update(m *Model, msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-// save hands the form's fields to the Library as it is on disk and goes back
-// where it came from. The trimming, the id, the slot and the empty-description
-// rule are all the Library's — this knows only which of the two verbs it is
-// performing, and what the Command looked like when the form opened.
-//
-// A save that does not land leaves the form open with everything typed in it,
-// and the reason in the warning slot: a write that failed, or another potato
-// having taken the name, changed the Command, or deleted it since the form
-// opened.
+// save hands the form's fields to the Library and, once they are on disk, goes
+// back where it came from. The trimming, the id, the slot and the
+// empty-description rule are all the Library's — this knows only which of the
+// two verbs it is performing.
 func (s *editScreen) save(m *Model) tea.Cmd {
 	draft := library.Draft{
 		Name:        s.value(fieldName),
@@ -222,9 +214,6 @@ func (s *editScreen) save(m *Model) tea.Cmd {
 	return m.flashDefault(verb)
 }
 
-// unchangedIn refuses to save over a Command that another potato has changed or
-// deleted since this form opened. Writing the form's fields over it would undo
-// that potato's edit without anyone seeing it go.
 func (s *editScreen) unchangedIn(lib library.Library) error {
 	current, ok := library.Find(lib, s.id)
 	if !ok {
@@ -267,8 +256,6 @@ func (s *editScreen) view(m *Model) []string {
 	if s.discardArmed {
 		warning = "Unsaved changes — esc again to discard"
 	}
-	// Wrapped rather than cut at the edge: a write that failed names the file,
-	// and the reason comes after the path.
 	var bottom []string
 	if warning != "" {
 		for _, line := range wrapLines("⚠ "+warning, width) {

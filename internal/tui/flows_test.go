@@ -161,10 +161,6 @@ func TestEditSavesTheRenamedName(t *testing.T) {
 	}
 }
 
-// A save that failed must not be reported as one that worked, and must not cost
-// the user what they typed: the form stays open with it, the reason sits under
-// it, and the list is never shown a Command the disk does not hold. Once the
-// disk can be written, the same Enter saves.
 func TestAFailedSaveKeepsTheFormAndSaysWhy(t *testing.T) {
 	m, rec := harness(t)
 	rec.failLibraryWith = errors.New("read-only file system")
@@ -198,8 +194,6 @@ func TestAFailedSaveKeepsTheFormAndSaysWhy(t *testing.T) {
 	}
 }
 
-// A write error names the file before it says what went wrong, so a long path
-// must not push the reason off the edge of the form.
 func TestAFailedSaveShowsTheWholeReason(t *testing.T) {
 	m, rec := harness(t)
 	rec.failLibraryWith = errors.New("write /home/someone-with-a-long-name/.config/dotfiles/potato/commands.json: permission denied")
@@ -210,9 +204,6 @@ func TestAFailedSaveShowsTheWholeReason(t *testing.T) {
 	}
 }
 
-// Another potato adds a Command while this one is open. This one's delete is
-// applied to the file as it is now, so the other Command survives it, and the
-// list picks it up from what was written.
 func TestAnotherPotatosCommandSurvivesThisOnesDelete(t *testing.T) {
 	m, rec := harness(t)
 	elsewhere, err := library.Add(rec.lib, library.Draft{Name: "from elsewhere", Template: "echo hi"})
@@ -699,9 +690,6 @@ func TestDeleteAlsoForgetsTheCommandsState(t *testing.T) {
 	}
 }
 
-// A delete whose Library write fails is reported as that failure, and nothing
-// else moves: the Command stays in the list, and State keeps what potato
-// remembers of it, since the Command is still there.
 func TestADeleteThatFailsLeavesTheCommandAndItsState(t *testing.T) {
 	m, rec := harness(t)
 	rec.failLibraryWith = errors.New("commands.json is read-only")

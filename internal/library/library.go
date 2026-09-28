@@ -430,9 +430,9 @@ func Load(path string) (Library, error) {
 }
 
 // Change applies change to the Library in the file as it is now and writes
-// what change returns, which is also what Change returns. Another potato may
-// have written the file since this one loaded it, and a change applied to the
-// copy it loaded would write that potato's work away. A file that will not
+// what change returns, which is also what Change returns. Applied to the file
+// rather than to a copy loaded at launch, a change keeps what another potato
+// has written since. A file that will not
 // load, a change that refuses, and a write that fails all return the error and
 // leave the file as it was.
 func Change(path string, change func(Library) (Library, error)) (Library, error) {

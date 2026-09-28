@@ -203,8 +203,6 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
-// A Library kept somewhere else and linked into ~/.potato — a dotfiles repo —
-// is saved where it lives, and the link survives the save.
 func TestSaveWritesThroughASymlinkedLibrary(t *testing.T) {
 	dotfiles := filepath.Join(t.TempDir(), "commands.json")
 	if err := os.WriteFile(dotfiles, []byte(Serialize(Empty())), 0o644); err != nil {
@@ -596,10 +594,6 @@ func TestSaveRefusesAnUnreadableLibrary(t *testing.T) {
 	}
 }
 
-// ---------- changing the file ----------
-
-// Two potatoes load the same file; the second one's change is applied to what
-// the first one wrote, not to the copy it loaded at launch.
 func TestChangeAppliesToTheFileNotTheCopyLoadedEarlier(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "commands.json")
 	if _, err := Change(file, func(lib Library) (Library, error) {
@@ -665,8 +659,6 @@ func TestChangeThatRefusesLeavesTheFile(t *testing.T) {
 	}
 }
 
-// A file potato cannot read is not overwritten by a change made on top of
-// nothing: the change never runs.
 func TestChangeRefusesAFileItCannotRead(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "commands.json")
 	if err := os.WriteFile(file, []byte(`{"version": 3, "commands": []}`), 0o644); err != nil {

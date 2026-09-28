@@ -165,8 +165,7 @@ func (s *listScreen) move(m *Model, delta int) {
 // Both files are written: the Library loses the Command and State loses its
 // cache entry. They are separate calls because they are separate files with
 // separate lifetimes, and this is the one place that knows a Command is being
-// destroyed rather than merely edited. State is written only once the Library
-// has been: a Command that is still there keeps what potato remembers of it.
+// destroyed rather than merely edited.
 func (s *listScreen) delete(m *Model) tea.Cmd {
 	command, ok := library.Find(m.lib, s.confirming)
 	s.confirming = ""
