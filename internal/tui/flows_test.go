@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -96,6 +97,43 @@ func TestCtrlYCopiesWithoutHandingOff(t *testing.T) {
 	}
 	if !strings.Contains(render(t, m), "Copied to clipboard") {
 		t.Error("no flash after copying")
+	}
+}
+
+func TestCopySendsOSC52ThroughTheProgram(t *testing.T) {
+	m, _ := harness(t)
+	press(m, []string{"ports"})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl})
+
+	want := tea.SetClipboard("lsof -iTCP -sTCP:LISTEN")()
+	if got := sent(cmd); !slices.Contains(got, want) {
+		t.Errorf("^Y sent %v, want the clipboard message among them", got)
+	}
+}
+
+// answersAtOnce is how long sent waits for a command before taking it for a
+// timer, which sleeps before it answers.
+const answersAtOnce = 50 * time.Millisecond
+
+func sent(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	answer := make(chan tea.Msg, 1)
+	go func() { answer <- cmd() }()
+	select {
+	case msg := <-answer:
+		batch, ok := msg.(tea.BatchMsg)
+		if !ok {
+			return []tea.Msg{msg}
+		}
+		var all []tea.Msg
+		for _, c := range batch {
+			all = append(all, sent(c)...)
+		}
+		return all
+	case <-time.After(answersAtOnce):
+		return nil
 	}
 }
 

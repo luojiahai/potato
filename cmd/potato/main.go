@@ -84,25 +84,39 @@ func runTUI(outFile string, hasOut bool) {
 	}
 }
 
-func runImport(args []string) {
-	override := slices.Contains(args, "--override")
-	if override && slices.Contains(args, "--merge") {
-		die("choose one of --merge or --override, not both")
-	}
-	file := ""
+func importArgs(args []string) (file string, override bool, err error) {
+	merge := false
 	for _, arg := range args {
-		if arg == "-" || !strings.HasPrefix(arg, "--") {
+		switch {
+		case arg == "--merge":
+			merge = true
+		case arg == "--override":
+			override = true
+		case arg != "-" && strings.HasPrefix(arg, "-"):
+			return "", false, fmt.Errorf("unknown flag '%s'", arg)
+		case file != "":
+			return "", false, fmt.Errorf("one file at a time, not '%s' and '%s'", file, arg)
+		default:
 			file = arg
-			break
 		}
 	}
+	if merge && override {
+		return "", false, fmt.Errorf("choose one of --merge or --override, not both")
+	}
 	if file == "" {
-		die("usage: potato import <file|-> [--merge | --override]")
+		return "", false, fmt.Errorf("no file to import")
+	}
+	return file, override, nil
+}
+
+func runImport(args []string) {
+	file, override, err := importArgs(args)
+	if err != nil {
+		die(err.Error() + "\nusage: potato import <file|-> [--merge | --override]")
 	}
 
 	source := file
 	var text []byte
-	var err error
 	if file == "-" {
 		source = "stdin"
 		text, err = io.ReadAll(os.Stdin)
@@ -165,11 +179,10 @@ func runImport(args []string) {
 }
 
 func runInit(args []string) {
-	name := ""
-	if len(args) > 0 {
-		name = args[0]
+	if len(args) != 1 {
+		die("usage: potato init <zsh|bash|sh>")
 	}
-	script, ok := shell.Script(name, paths.Bin(), paths.Potato())
+	script, ok := shell.Script(args[0], paths.Bin(), paths.Potato())
 	if !ok {
 		die("usage: potato init <zsh|bash|sh>")
 	}
@@ -186,8 +199,8 @@ func main() {
 
 	switch cmd {
 	case "--out":
-		if len(rest) == 0 || rest[0] == "" {
-			die("--out needs a file path")
+		if len(rest) != 1 || rest[0] == "" {
+			die("usage: potato --out <file>")
 		}
 		runTUI(rest[0], true)
 	case "import":
@@ -195,20 +208,29 @@ func main() {
 	case "init":
 		runInit(rest)
 	case "update":
+		if len(rest) > 0 {
+			die("usage: potato update")
+		}
 		if err := update.Run(); err != nil {
 			die(err.Error())
 		}
 	case "uninstall":
-		if err := update.RunUninstall(rest); err != nil {
+		purge := slices.Equal(rest, []string{"--purge"})
+		if !purge && len(rest) > 0 {
+			die("usage: potato uninstall [--purge]")
+		}
+		if err := update.RunUninstall(purge); err != nil {
 			die(err.Error())
 		}
 	case "--version", "-v":
+		if len(rest) > 0 {
+			die("usage: potato --version")
+		}
 		fmt.Println(version.Version)
 	case "--help", "-h":
 		os.Stdout.WriteString(usage())
 	default:
-		fmt.Fprintf(os.Stderr, "potato: unknown command '%s'\n\n", cmd)
-		os.Stdout.WriteString(usage())
+		fmt.Fprintf(os.Stderr, "potato: unknown command '%s'\n\n%s", cmd, usage())
 		os.Exit(1)
 	}
 }

@@ -45,7 +45,10 @@ func fixtureDeps() Deps {
 	st := state.State{
 		"id-deploy": {LastUsedAt: time.Date(2026, 7, 24, 8, 0, 0, 0, time.UTC), Args: map[string]string{"host": "prod-7"}},
 	}
-	deps, _ := onDisk(Deps{Now: func() time.Time { return time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC) }}, lib, st)
+	deps, _ := onDisk(Deps{
+		Copy: func(string) bool { return false },
+		Now:  func() time.Time { return time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC) },
+	}, lib, st)
 	return deps
 }
 

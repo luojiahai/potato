@@ -34,9 +34,8 @@ type Deps struct {
 	State         state.State
 	ChangeLibrary func(func(library.Library) (library.Library, error)) (library.Library, error)
 	ChangeState   func(func(state.State) state.State) (state.State, error)
-	// Copy reports whether a native clipboard tool took the text. It is false
-	// when only OSC 52 was sent, which nothing can confirm, and the flash the
-	// user reads is phrased from it.
+	// Copy hands the text to a native clipboard tool and reports whether one
+	// took it.
 	Copy func(string) bool
 	Now  func() time.Time
 }
@@ -311,15 +310,16 @@ func (m *Model) copy(id string, values map[string]string) tea.Cmd {
 		return nil
 	}
 	saved := m.rememberUse(id, values)
+	text := placeholders.Render(command.Template, values)
+	osc52 := tea.SetClipboard(text)
 	// The flash claims only what potato watched happen. A native tool taking the
 	// text is a copy; OSC 52 alone is a sequence sent into a terminal that never
 	// answers, and telling the user their clipboard is loaded when it may not be
 	// costs them the paste they were about to make.
-	native := m.deps.Copy != nil && m.deps.Copy(placeholders.Render(command.Template, values))
-	if !native {
-		return m.finish("Copied via OSC 52 — terminal support varies", saved)
+	if !m.deps.Copy(text) {
+		return tea.Batch(osc52, m.finish("Copied via OSC 52 — terminal support varies", saved))
 	}
-	return m.finish("Copied to clipboard", saved)
+	return tea.Batch(osc52, m.finish("Copied to clipboard", saved))
 }
 
 // ---------- program ----------
