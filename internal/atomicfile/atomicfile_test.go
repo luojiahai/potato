@@ -3,6 +3,7 @@ package atomicfile
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -114,8 +115,12 @@ func TestAFailedWriteLeavesTheTargetAndNoTemp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Write(target, []byte("new"), 0o644); err == nil {
+	err := Write(target, []byte("new"), 0o644)
+	if err == nil {
 		t.Fatal("writing over a non-empty directory succeeded")
+	}
+	if !strings.HasPrefix(err.Error(), "write "+target+": ") {
+		t.Errorf("error = %q, want it to name the target and nothing else", err)
 	}
 	if got := read(t, filepath.Join(target, "keep")); got != "x" {
 		t.Errorf("the target was disturbed: %q", got)

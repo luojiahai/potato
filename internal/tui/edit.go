@@ -267,9 +267,13 @@ func (s *editScreen) view(m *Model) []string {
 	if s.discardArmed {
 		warning = "Unsaved changes — esc again to discard"
 	}
+	// Wrapped rather than cut at the edge: a write that failed names the file,
+	// and the reason comes after the path.
 	var bottom []string
 	if warning != "" {
-		bottom = []string{dangerStyle.Render("⚠ " + warning)}
+		for _, line := range wrapLines("⚠ "+warning, width) {
+			bottom = append(bottom, dangerStyle.Render(line))
+		}
 	}
 
 	on := m.caretOn()

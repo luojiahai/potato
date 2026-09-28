@@ -198,6 +198,18 @@ func TestAFailedSaveKeepsTheFormAndSaysWhy(t *testing.T) {
 	}
 }
 
+// A write error names the file before it says what went wrong, so a long path
+// must not push the reason off the edge of the form.
+func TestAFailedSaveShowsTheWholeReason(t *testing.T) {
+	m, rec := harness(t)
+	rec.failLibraryWith = errors.New("write /home/someone-with-a-long-name/.config/dotfiles/potato/commands.json: permission denied")
+	press(m, []string{"ctrl+n", "doomed", "tab", "tab", "echo x", "enter"})
+
+	if frame := render(t, m); !strings.Contains(frame, "permission denied") {
+		t.Errorf("the reason was cut off:\n%s", frame)
+	}
+}
+
 // Another potato adds a Command while this one is open. This one's delete is
 // applied to the file as it is now, so the other Command survives it, and the
 // list picks it up from what was written.
