@@ -202,8 +202,8 @@ func main() {
 
 	switch cmd {
 	case "--out":
-		if len(rest) == 0 || rest[0] == "" {
-			die("--out needs a file path")
+		if len(rest) != 1 || rest[0] == "" {
+			die("usage: potato --out <file>")
 		}
 		runTUI(rest[0], true)
 	case "import":
@@ -226,6 +226,9 @@ func main() {
 			die(err.Error())
 		}
 	case "--version", "-v":
+		if len(rest) > 0 {
+			die("usage: potato --version")
+		}
 		fmt.Println(version.Version)
 	case "--help", "-h":
 		os.Stdout.WriteString(usage())

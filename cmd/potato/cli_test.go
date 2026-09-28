@@ -390,3 +390,15 @@ func TestTUIWithoutATerminal(t *testing.T) {
 		t.Errorf("stderr = %q", got.stderr)
 	}
 }
+
+func TestOutAndVersionRefuseExtraArguments(t *testing.T) {
+	for _, args := range [][]string{{"--out", "f", "junk"}, {"--out"}, {"--version", "junk"}} {
+		got := run(t, args, "", "")
+		if got.exitCode == 0 {
+			t.Errorf("%v: exit 0, want a refusal", args)
+		}
+		if !strings.Contains(got.stderr, "usage: potato") {
+			t.Errorf("%v: stderr = %q, want the usage", args, got.stderr)
+		}
+	}
+}
