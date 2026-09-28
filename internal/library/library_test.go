@@ -203,6 +203,37 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
+// A Library kept somewhere else and linked into ~/.potato — a dotfiles repo —
+// is saved where it lives, and the link survives the save.
+func TestSaveWritesThroughASymlinkedLibrary(t *testing.T) {
+	dotfiles := filepath.Join(t.TempDir(), "commands.json")
+	if err := os.WriteFile(dotfiles, []byte(Serialize(Empty())), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "commands.json")
+	if err := os.Symlink(dotfiles, link); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Save(link, add(t, Empty(), Draft{Name: "kept", Template: "ls"})); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("the save replaced the symlink with a copy")
+	}
+	lib, err := Load(dotfiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lib.Commands) != 1 || lib.Commands[0].Name != "kept" {
+		t.Errorf("the linked file = %+v, want the saved Command", lib.Commands)
+	}
+}
+
 // ---------- the write interface ----------
 
 func add(t *testing.T, lib Library, d Draft) Library {

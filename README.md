@@ -50,7 +50,7 @@ A command that already contains newlines, whether hand-written into the JSON or 
 
 ### Your library
 
-Your commands live in one hand-editable JSON file, `~/.potato/commands.json`. Copying that file is how you share or back up a library; there is no separate export. Beside it, `~/.potato/state.json` caches last-used times and last argument values. It is disposable, and it never travels with the library.
+Your commands live in one hand-editable JSON file, `~/.potato/commands.json`. Copying that file is how you share or back up a library; there is no separate export. It can be a symlink, into a dotfiles repo say, and potato writes through the link rather than replacing it. Beside it, `~/.potato/state.json` caches last-used times and last argument values. It is disposable, and it never travels with the library.
 
 ```json
 {

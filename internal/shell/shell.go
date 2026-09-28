@@ -24,8 +24,8 @@ package shell
 
 import (
 	"fmt"
-	"os"
 
+	"github.com/luojiahai/potato/internal/atomicfile"
 	"github.com/luojiahai/potato/internal/paths"
 )
 
@@ -104,7 +104,7 @@ func Script(shell, bin, dir string) (string, bool) {
 func WriteInitFiles(bin, dir string) error {
 	for _, shell := range []string{"zsh", "bash", "sh"} {
 		script, _ := Script(shell, bin, dir)
-		if err := os.WriteFile(paths.Init(shell), []byte(script), 0o644); err != nil {
+		if err := atomicfile.Write(paths.Init(shell), []byte(script), 0o644); err != nil {
 			return err
 		}
 	}

@@ -26,12 +26,12 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/luojiahai/potato/internal/atomicfile"
 )
 
 // Command is one saved Command. Template is the template string — the file
@@ -429,7 +429,7 @@ func Load(path string) (Library, error) {
 	return Parse(string(text), path)
 }
 
-// Save writes atomically (temp + rename): a failed write leaves the original
+// Save writes through atomicfile: a failed write leaves the original
 // untouched, so a crashed save never corrupts the Library.
 //
 // It refuses a Library that Parse would reject, before touching the disk. The
@@ -441,14 +441,7 @@ func Save(path string, lib Library) error {
 	if reason := validate(lib); reason != "" {
 		return fail(path, reason)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	tmp := fmt.Sprintf("%s.%d.tmp", path, os.Getpid())
-	if err := os.WriteFile(tmp, []byte(Serialize(lib)), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return atomicfile.Write(path, []byte(Serialize(lib)), 0o644)
 }
 
 // Find returns the Command with this id. It hands back a copy rather than a
