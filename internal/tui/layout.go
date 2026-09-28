@@ -466,22 +466,23 @@ func (s sized) paint(row blockRow) string {
 		text := c.paint(room, row.selected)
 		w := ansi.StringWidth(text)
 
-		switch {
-		case col.align == alignTrailing:
+		switch col.align {
+		case alignTrailing:
 			b.WriteString(pad(max(0, width-used) - w))
 			b.WriteString(text)
 			used = width
-		case col.align == alignRight:
+		case alignRight:
 			b.WriteString(pad(box - w))
 			b.WriteString(text)
 			used += box
-		case col.spend == spendFlex && trailing:
+		case alignLeft:
 			b.WriteString(text)
-			used += w
-		default:
-			b.WriteString(text)
-			b.WriteString(pad(box - w))
-			used += box
+			if col.spend == spendFlex && trailing {
+				used += w
+			} else {
+				b.WriteString(pad(box - w))
+				used += box
+			}
 		}
 	}
 	return b.String()

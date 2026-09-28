@@ -18,12 +18,11 @@ import (
 // means no match. Consecutive runs score higher, with a slight bias toward
 // shorter targets.
 func subsequenceScore(query, text string) (float64, bool) {
-	q := []rune(strings.ToLower(query))
 	t := []rune(strings.ToLower(text))
 	ti := 0
 	score := 0.0
 	lastMatch := -2
-	for _, r := range q {
+	for _, r := range strings.ToLower(query) {
 		found := indexRuneFrom(t, r, ti)
 		if found < 0 {
 			return 0, false
@@ -56,11 +55,10 @@ func NameMatchIndices(query, name string) (map[int]bool, bool) {
 	if strings.TrimSpace(query) == "" {
 		return nil, false
 	}
-	q := []rune(strings.ToLower(query))
 	t := []rune(strings.ToLower(name))
 	indices := map[int]bool{}
 	ti := 0
-	for _, r := range q {
+	for _, r := range strings.ToLower(query) {
 		found := indexRuneFrom(t, r, ti)
 		if found < 0 {
 			return nil, false
