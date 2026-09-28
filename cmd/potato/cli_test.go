@@ -309,8 +309,6 @@ func TestUnknownCommandPrintsUsageAndExitsOne(t *testing.T) {
 	}
 }
 
-// A mistyped flag is refused before anything is written. Read as a file name
-// or dropped, `--overide` would merge where the user asked to replace.
 func TestImportRefusesWhatItDoesNotUnderstand(t *testing.T) {
 	incoming := filepath.Join(t.TempDir(), "theirs.json")
 	writeFile(t, incoming, v2(command{ID: "t1", Name: "theirs", Template: "echo t"}))
@@ -336,8 +334,6 @@ func TestImportRefusesWhatItDoesNotUnderstand(t *testing.T) {
 	}
 }
 
-// uninstall deletes things, so a flag it does not know stops it before it
-// starts — `--prge` must not quietly uninstall without purging.
 func TestUninstallRefusesAnUnknownFlag(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, filepath.Join(home, ".zshrc"), "source "+home+"/init.zsh\n")

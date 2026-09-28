@@ -100,9 +100,6 @@ func TestCtrlYCopiesWithoutHandingOff(t *testing.T) {
 	}
 }
 
-// OSC 52 is what reaches a clipboard over SSH and inside tmux, so it goes out on
-// every copy — and through the program's own output, as every byte potato
-// writes to the terminal does, where it cannot land inside a frame being drawn.
 func TestCopySendsOSC52ThroughTheProgram(t *testing.T) {
 	m, _ := harness(t)
 	press(m, []string{"ports"})
@@ -114,9 +111,10 @@ func TestCopySendsOSC52ThroughTheProgram(t *testing.T) {
 	}
 }
 
-// sent runs cmd and every command batched inside it, and collects what each
-// sends at once. A timer — a flash's, the caret's blink — sleeps before it
-// answers, and is left to.
+// answersAtOnce is how long sent waits for a command before taking it for a
+// timer, which sleeps before it answers.
+const answersAtOnce = 50 * time.Millisecond
+
 func sent(cmd tea.Cmd) []tea.Msg {
 	if cmd == nil {
 		return nil
@@ -134,7 +132,7 @@ func sent(cmd tea.Cmd) []tea.Msg {
 			all = append(all, sent(c)...)
 		}
 		return all
-	case <-time.After(50 * time.Millisecond):
+	case <-time.After(answersAtOnce):
 		return nil
 	}
 }

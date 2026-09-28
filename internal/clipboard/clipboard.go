@@ -1,7 +1,4 @@
-// Package clipboard hands text to the platform's own clipboard tool: the half
-// of a copy that can say whether it worked. The other half is OSC 52, which
-// the TUI sends through Bubble Tea on every copy — the only mechanism that
-// reaches a clipboard over SSH and inside tmux, and one nothing answers.
+// Package clipboard hands text to the platform's own clipboard tool.
 package clipboard
 
 import (

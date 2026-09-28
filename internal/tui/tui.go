@@ -35,8 +35,7 @@ type Deps struct {
 	ChangeLibrary func(func(library.Library) (library.Library, error)) (library.Library, error)
 	ChangeState   func(func(state.State) state.State) (state.State, error)
 	// Copy hands the text to a native clipboard tool and reports whether one
-	// took it. OSC 52 is sent either way and nothing confirms it, so the flash
-	// the user reads is phrased from this.
+	// took it.
 	Copy func(string) bool
 	Now  func() time.Time
 }
@@ -312,8 +311,6 @@ func (m *Model) copy(id string, values map[string]string) tea.Cmd {
 	}
 	saved := m.rememberUse(id, values)
 	text := placeholders.Render(command.Template, values)
-	// OSC 52 goes out through the program, which owns the terminal's output: a
-	// sequence written around it could land in the middle of a frame.
 	osc52 := tea.SetClipboard(text)
 	// The flash claims only what potato watched happen. A native tool taking the
 	// text is a copy; OSC 52 alone is a sequence sent into a terminal that never

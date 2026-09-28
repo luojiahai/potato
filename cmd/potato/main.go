@@ -84,9 +84,6 @@ func runTUI(outFile string, hasOut bool) {
 	}
 }
 
-// importArgs reads `potato import`'s arguments: one file, or - for stdin, and
-// at most one of --merge and --override. Anything else is refused rather than
-// guessed at, so a mistyped --override cannot turn into a merge.
 func importArgs(args []string) (file string, override bool, err error) {
 	merge := false
 	for _, arg := range args {

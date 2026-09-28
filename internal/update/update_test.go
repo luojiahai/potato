@@ -64,7 +64,6 @@ func TestRemoveInitLinesLeavesOtherRcsAlone(t *testing.T) {
 	}
 }
 
-// tarball builds a release-shaped .tar.gz from name → contents.
 func tarball(t *testing.T, files map[string]string) []byte {
 	t.Helper()
 	var buf bytes.Buffer

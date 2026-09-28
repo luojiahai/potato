@@ -54,8 +54,6 @@ func TargetTriple(goos, goarch string) (string, error) {
 	return "", fmt.Errorf("unsupported platform: %s-%s", goos, goarch)
 }
 
-// requestTimeout bounds each request, so a connection that stalls ends in an
-// error rather than a hang. It is sized for the release tarball on a slow link.
 const requestTimeout = 5 * time.Minute
 
 func latestTag() (string, error) {
@@ -137,7 +135,6 @@ func Run() error {
 
 	// The swap goes over the running binary's realpath — the executable path,
 	// not the env-derived install dir, which may differ in this shell.
-	// atomicfile stages beside it, so the rename never crosses filesystems.
 	exe, err := os.Executable()
 	if err != nil {
 		return err
